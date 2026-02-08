@@ -13,7 +13,6 @@ import {
   ClipboardCheck,
   AlertCircle,
   Plus,
-  Trash2
 } from 'lucide-react';
 import { ordersApi } from '@/lib/api-client';
 import { useAuthStore } from '@/store/auth-store';
@@ -373,13 +372,6 @@ export function MyOrders() {
                             : 'bg-white border-gray-200 hover:bg-green-50 hover:border-green-300 active:bg-green-100'
                             }`}
                         >
-                          {/* Swipe hint for undelivered items */}
-                          {!item.isDelivered && (
-                            <div className="absolute inset-0 flex items-center justify-between px-4 pointer-events-none">
-                              <Trash2 className="w-5 h-5 text-red-400 opacity-30" />
-                              <Trash2 className="w-5 h-5 text-red-400 opacity-30" />
-                            </div>
-                          )}
                           <Checkbox
                             id={key}
                             checked={item.isDelivered}

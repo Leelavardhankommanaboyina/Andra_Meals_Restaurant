@@ -10,7 +10,6 @@ import {
   Receipt,
   BarChart3,
   LogOut,
-  Menu,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -99,16 +98,10 @@ export default function AdminLayout({
         {/* Mobile Header */}
         <header className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-white shadow-sm">
           <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
-                <UtensilsCrossed className="w-4 h-4 text-white" />
-              </div>
-              <span className="font-semibold text-gray-800">Admin Panel</span>
-            </div>
             <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
               <SheetTrigger asChild>
                 <Button variant="ghost" size="icon">
-                  <Menu className="w-6 h-6" />
+                  <UtensilsCrossed className="w-5 h-5 text-orange-500" />
                 </Button>
               </SheetTrigger>
               <SheetContent side="left" className="w-72 p-0">
@@ -140,6 +133,8 @@ export default function AdminLayout({
                 </div>
               </SheetContent>
             </Sheet>
+            <span className="font-semibold text-gray-800">Admin Panel</span>
+            <div className="w-10" /> {/* Spacer for alignment */}
           </div>
         </header>
 
