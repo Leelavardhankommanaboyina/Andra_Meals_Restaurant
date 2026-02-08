@@ -290,14 +290,15 @@ export function MyOrders() {
           >
             <Card className="shadow-lg">
               <CardHeader className="pb-3">
+                {/* Table number in centered circle */}
+                <div className="flex justify-center mb-3">
+                  <div className="w-12 h-12 rounded-full bg-orange-500 flex items-center justify-center text-white font-bold text-lg shadow-md">
+                    {currentOrder.tableNumber}
+                  </div>
+                </div>
+
                 <div className="flex items-center justify-between">
                   <div>
-                    <Badge
-                      variant="secondary"
-                      className="mb-2 bg-orange-100 text-orange-700"
-                    >
-                      Table {currentOrder.tableNumber}
-                    </Badge>
                     <CardTitle className="text-lg">
                       {currentOrder.customerName}
                     </CardTitle>
@@ -305,20 +306,10 @@ export function MyOrders() {
                       {new Date(currentOrder.createdAt).toLocaleTimeString()}
                     </p>
                   </div>
-                  <div className="text-right flex flex-col items-end gap-1">
-                    <div className="flex items-center gap-2">
-                      <p className="text-sm text-gray-500">
-                        {currentIndex + 1} / {myOrders.length}
-                      </p>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 w-8 p-0 border-orange-300 hover:bg-orange-50"
-                        onClick={() => setAddItemDialogOpen(true)}
-                      >
-                        <Plus className="w-4 h-4 text-orange-600" />
-                      </Button>
-                    </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-500 mb-1">
+                      {currentIndex + 1} / {myOrders.length}
+                    </p>
                     <p className="text-lg font-bold text-orange-600">
                       ₹{myItemsTotal}
                     </p>
@@ -447,18 +438,28 @@ export function MyOrders() {
                     </p>
                   </div>
                 )}
-
-                <Button
-                  className="w-full mt-4 h-12 bg-green-500 hover:bg-green-600"
-                  onClick={() => handleMyItemsDelivered(currentOrder._id)}
-                  disabled={!allMyItemsDelivered}
-                >
-                  {allMyItemsDelivered ? (
-                    'Done - Remove from My Orders'
-                  ) : (
-                    `${myUndeliveredItems.length} item(s) left to deliver`
-                  )}
-                </Button>
+                {/* Action buttons */}
+                <div className="mt-4 flex gap-3">
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="h-12 w-12 rounded-full border-orange-300 hover:bg-orange-50 shrink-0"
+                    onClick={() => setAddItemDialogOpen(true)}
+                  >
+                    <Plus className="w-5 h-5 text-orange-600" />
+                  </Button>
+                  <Button
+                    className="flex-1 h-12 bg-green-500 hover:bg-green-600"
+                    onClick={() => handleMyItemsDelivered(currentOrder._id)}
+                    disabled={!allMyItemsDelivered}
+                  >
+                    {allMyItemsDelivered ? (
+                      'Done - Remove from My Orders'
+                    ) : (
+                      `${myUndeliveredItems.length} item(s) left to deliver`
+                    )}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </motion.div>

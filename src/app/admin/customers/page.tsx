@@ -103,6 +103,7 @@ export default function CustomersPage() {
   const { ongoingOrders, completedOrders, setOngoingOrders, setCompletedOrders, isLoading: storeLoading } = useAdminStore();
   const [isLoading, setIsLoading] = useState(storeLoading || ongoingOrders.length === 0);
   const [tableSearch, setTableSearch] = useState('');
+  const [nameSearch, setNameSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
@@ -138,7 +139,7 @@ export default function CustomersPage() {
   useEffect(() => {
     if (selectedOrder) {
       // Find updated order in either list
-      const updated = ongoingOrders.find(o => o._id === selectedOrder._id) 
+      const updated = ongoingOrders.find(o => o._id === selectedOrder._id)
         || completedOrders.find(o => o._id === selectedOrder._id);
       if (updated && JSON.stringify(updated) !== JSON.stringify(selectedOrder)) {
         setSelectedOrder(updated);
@@ -149,18 +150,48 @@ export default function CustomersPage() {
   // Socket events are handled globally by socket-provider, which updates the Zustand store
   // No need for duplicate listeners here - the store subscription above handles UI updates
 
-  // Memoized filtered lists - no need for separate state
+  // Memoized filtered lists - filter by both table number and customer name
   const filteredOngoing = useMemo(() => {
-    if (!tableSearch) return ongoingOrders;
-    const tableNum = parseInt(tableSearch);
-    return isNaN(tableNum) ? ongoingOrders : ongoingOrders.filter(o => o.tableNumber === tableNum);
-  }, [tableSearch, ongoingOrders]);
+    let filtered = ongoingOrders;
+
+    // Filter by table number
+    if (tableSearch) {
+      const tableNum = parseInt(tableSearch);
+      if (!isNaN(tableNum)) {
+        filtered = filtered.filter(o => o.tableNumber === tableNum);
+      }
+    }
+
+    // Filter by customer name
+    if (nameSearch) {
+      filtered = filtered.filter(o =>
+        o.customerName.toLowerCase().includes(nameSearch.toLowerCase())
+      );
+    }
+
+    return filtered;
+  }, [tableSearch, nameSearch, ongoingOrders]);
 
   const filteredCompleted = useMemo(() => {
-    if (!tableSearch) return completedOrders;
-    const tableNum = parseInt(tableSearch);
-    return isNaN(tableNum) ? completedOrders : completedOrders.filter(o => o.tableNumber === tableNum);
-  }, [tableSearch, completedOrders]);
+    let filtered = completedOrders;
+
+    // Filter by table number
+    if (tableSearch) {
+      const tableNum = parseInt(tableSearch);
+      if (!isNaN(tableNum)) {
+        filtered = filtered.filter(o => o.tableNumber === tableNum);
+      }
+    }
+
+    // Filter by customer name
+    if (nameSearch) {
+      filtered = filtered.filter(o =>
+        o.customerName.toLowerCase().includes(nameSearch.toLowerCase())
+      );
+    }
+
+    return filtered;
+  }, [tableSearch, nameSearch, completedOrders]);
 
   const handleViewOrder = (order: Order) => {
     setSelectedOrder(order);
@@ -286,16 +317,28 @@ export default function CustomersPage() {
               Ongoing: {ongoingOrders.length} | Completed: {completedOrders.length}
             </p>
           </div>
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <Input
-              type="text"
-              inputMode="numeric"
-              placeholder="Search by table number..."
-              value={tableSearch}
-              onChange={(e) => setTableSearch(e.target.value.replace(/\D/g, ''))}
-              className="pl-10"
-            />
+          <div className="flex gap-2 w-full sm:w-auto">
+            <div className="relative flex-1 sm:w-40">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                type="text"
+                inputMode="numeric"
+                placeholder="Table #"
+                value={tableSearch}
+                onChange={(e) => setTableSearch(e.target.value.replace(/\D/g, ''))}
+                className="pl-10"
+              />
+            </div>
+            <div className="relative flex-1 sm:w-48">
+              <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                type="text"
+                placeholder="Customer name..."
+                value={nameSearch}
+                onChange={(e) => setNameSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -356,10 +399,10 @@ export default function CustomersPage() {
             )}
           </TabsContent>
         </ScrollArea>
-      </Tabs>
+      </Tabs >
 
       {/* Order Detail Dialog */}
-      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
+      < Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog} >
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Order Details</DialogTitle>
@@ -399,8 +442,8 @@ export default function CustomersPage() {
                   </thead>
                   <tbody>
                     {selectedOrder.items.map((item, index) => (
-                      <tr 
-                        key={index} 
+                      <tr
+                        key={index}
                         className={`border-t cursor-pointer transition-colors ${item.isDelivered ? 'bg-green-50 hover:bg-green-100' : 'hover:bg-green-50'}`}
                         onClick={() => !updatingItems.has(index) && handleItemDeliveryToggle(index, !item.isDelivered)}
                       >
@@ -493,7 +536,7 @@ export default function CustomersPage() {
             </div>
           </DialogFooter>
         </DialogContent>
-      </Dialog>
-    </div>
+      </Dialog >
+    </div >
   );
 }

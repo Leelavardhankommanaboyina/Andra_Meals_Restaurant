@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { ChevronLeft, Loader2, Users } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { ChevronLeft, Loader2, Users, Search, X } from 'lucide-react';
 import { ordersApi } from '@/lib/api-client';
 import { toast } from 'sonner';
 
@@ -28,6 +29,7 @@ export function CustomerList({ tableNumber, onSelect, onBack }: CustomerListProp
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     const fetchCustomers = async () => {
@@ -61,6 +63,11 @@ export function CustomerList({ tableNumber, onSelect, onBack }: CustomerListProp
     }
   };
 
+  // Filter customers by search query
+  const filteredCustomers = customers.filter(customer =>
+    customer.customerName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[calc(100vh-3.5rem)]">
@@ -93,27 +100,56 @@ export function CustomerList({ tableNumber, onSelect, onBack }: CustomerListProp
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
       {/* Header */}
-      <div className="bg-white border-b px-4 py-3 flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={onBack}>
-          <ChevronLeft className="w-6 h-6" />
-        </Button>
-        <div>
-          <h1 className="font-semibold text-gray-800">Select Customer</h1>
-          <p className="text-sm text-orange-500">Table {tableNumber}</p>
+      <div className="bg-white border-b px-4 py-3">
+        <div className="flex items-center gap-3 mb-3">
+          <Button variant="ghost" size="icon" onClick={onBack}>
+            <ChevronLeft className="w-6 h-6" />
+          </Button>
+          <div>
+            <h1 className="font-semibold text-gray-800">Select Customer</h1>
+            <p className="text-sm text-orange-500">Table {tableNumber}</p>
+          </div>
+        </div>
+
+        {/* Search Input */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <Input
+            type="text"
+            placeholder="Search by customer name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 pr-10 h-10"
+          />
+          {searchQuery && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
+              onClick={() => setSearchQuery('')}
+            >
+              <X className="w-4 h-4" />
+            </Button>
+          )}
         </div>
       </div>
 
       {/* Customer List */}
       <ScrollArea className="flex-1 bg-gray-50">
         <div className="p-4 space-y-3">
-          {customers.map((customer) => (
+          {filteredCustomers.length === 0 && searchQuery && (
+            <div className="text-center py-8 text-gray-500">
+              <Search className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <p>No customers found matching "{searchQuery}"</p>
+            </div>
+          )}
+          {filteredCustomers.map((customer) => (
             <Card
               key={customer._id}
-              className={`cursor-pointer transition-all ${
-                selectedId === customer._id
+              className={`cursor-pointer transition-all ${selectedId === customer._id
                   ? 'ring-2 ring-orange-500 bg-orange-50'
                   : 'hover:bg-gray-50'
-              }`}
+                }`}
               onClick={() => handleSelect(customer)}
             >
               <CardContent className="p-4">
@@ -123,13 +159,12 @@ export function CustomerList({ tableNumber, onSelect, onBack }: CustomerListProp
                       {customer.customerName}
                     </p>
                     <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <Badge 
+                      <Badge
                         variant={customer.status === 'ongoing' ? 'default' : 'secondary'}
-                        className={`text-xs ${
-                          customer.status === 'ongoing' 
-                            ? 'bg-green-500' 
+                        className={`text-xs ${customer.status === 'ongoing'
+                            ? 'bg-green-500'
                             : 'bg-blue-500 text-white'
-                        }`}
+                          }`}
                       >
                         {customer.status === 'ongoing' ? '● Active' : '✓ Completed'}
                       </Badge>
@@ -142,11 +177,10 @@ export function CustomerList({ tableNumber, onSelect, onBack }: CustomerListProp
                     </p>
                   </div>
                   <div
-                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                      selectedId === customer._id
+                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${selectedId === customer._id
                         ? 'border-orange-500 bg-orange-500'
                         : 'border-gray-300'
-                    }`}
+                      }`}
                   >
                     {selectedId === customer._id && (
                       <div className="w-2 h-2 rounded-full bg-white" />
