@@ -147,7 +147,7 @@ export default function MenuItemsPage() {
       await menuApi.update(item._id, { isActive: !item.isActive });
       updateMenuItem(item._id, { isActive: !item.isActive });
       toast.success(`Item ${item.isActive ? 'deactivated' : 'activated'}`);
-    } catch (error) {
+    } catch {
       toast.error('Failed to update item status');
     }
   };
@@ -159,7 +159,7 @@ export default function MenuItemsPage() {
       await menuApi.delete(item._id);
       removeMenuItem(item._id);
       toast.success('Menu item deleted');
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete item');
     }
   };

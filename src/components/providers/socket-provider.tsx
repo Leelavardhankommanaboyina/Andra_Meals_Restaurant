@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Socket } from 'socket.io-client';
-import { initSocket, disconnectSocket, joinRoom, leaveRoom, getSocket, SOCKET_EVENTS, ROOMS } from '@/lib/socket-client';
+import { initSocket, joinRoom, leaveRoom, getSocket, SOCKET_EVENTS, ROOMS } from '@/lib/socket-client';
 import { useAuthStore } from '@/store/auth-store';
 import { useAdminStore, MenuItem, Server, Customer } from '@/store/admin-store';
 import { useOrderStore, Order } from '@/store/order-store';
@@ -144,6 +144,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
       socketInstance.off('connect', onConnect);
       socketInstance.off('disconnect', onDisconnect);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, user?.userId, user?.role]);
 
   return (

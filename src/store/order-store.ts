@@ -77,7 +77,7 @@ const initialNewOrderState: NewOrderState = {
   selectedOrderId: null,
 };
 
-export const useOrderStore = create<OrderState>((set, get) => ({
+export const useOrderStore = create<OrderState>((set) => ({
   newOrder: { ...initialNewOrderState },
   myOrders: [],
   orderHistory: [],

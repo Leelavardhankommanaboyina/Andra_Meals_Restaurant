@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
 import { ChevronLeft, Loader2, Users, Search, X } from 'lucide-react';
 import { ordersApi } from '@/lib/api-client';
@@ -140,7 +140,7 @@ export function CustomerList({ tableNumber, onSelect, onBack }: CustomerListProp
           {filteredCustomers.length === 0 && searchQuery && (
             <div className="text-center py-8 text-gray-500">
               <Search className="w-12 h-12 mx-auto mb-2 opacity-50" />
-              <p>No customers found matching "{searchQuery}"</p>
+              <p>No customers found matching &quot;{searchQuery}&quot;</p>
             </div>
           )}
           {filteredCustomers.map((customer) => (

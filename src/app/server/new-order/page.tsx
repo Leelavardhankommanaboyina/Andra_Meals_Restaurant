@@ -20,6 +20,7 @@ export default function NewOrderPage() {
   const [step, setStep] = useState<Step>('table');
   const [tableNumber, setTableNumber] = useState<number | null>(null);
   const [customerName, setCustomerName] = useState<string>('');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleTableNext = (table: number) => {

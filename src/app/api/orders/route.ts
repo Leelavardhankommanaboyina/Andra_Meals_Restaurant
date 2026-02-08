@@ -13,16 +13,16 @@ import {
 import { emitSocketEvent, SOCKET_EVENTS } from '@/lib/socket-emit';
 
 // GET /api/orders - Get orders based on role and filters
-export async function GET(request: NextRequest) {
+export async function GET(_request: NextRequest) {
   try {
     await dbConnect();
 
-    const user = await getCurrentUser(request);
+    const user = await getCurrentUser(_request);
     if (!user) {
       return unauthorizedResponse();
     }
 
-    const searchParams = request.nextUrl.searchParams;
+    const searchParams = _request.nextUrl.searchParams;
     const status = searchParams.get('status');
     const tableNumber = searchParams.get('tableNumber');
     const serverId = searchParams.get('serverId');
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
       orders: filteredOrders,
       total: filteredOrders.length,
     });
-  } catch (error) {
+  } catch {
     return serverErrorResponse('Failed to fetch orders');
   }
 }
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
     emitSocketEvent(SOCKET_EVENTS.ORDER_CREATED, newOrder);
 
     return successResponse(newOrder, 'Order created successfully', 201);
-  } catch (error) {
+  } catch {
     return serverErrorResponse('Failed to create order');
   }
 }

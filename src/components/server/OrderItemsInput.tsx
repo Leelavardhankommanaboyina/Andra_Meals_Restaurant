@@ -3,9 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   ChevronLeft, 
   Plus, 
@@ -232,7 +231,7 @@ export function OrderItemsInput({
 
           {showSuggestions && searchQuery && filteredItems.length === 0 && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-50 p-4 text-center text-gray-500">
-              No items found matching "{searchQuery}"
+              No items found matching &quot;{searchQuery}&quot;
             </div>
           )}
         </div>

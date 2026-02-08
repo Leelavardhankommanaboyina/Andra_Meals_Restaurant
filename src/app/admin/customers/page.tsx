@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, memo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -124,8 +124,8 @@ export default function CustomersPage() {
       ]);
       setOngoingOrders(ongoingRes.data.orders as Order[]);
       setCompletedOrders(completedRes.data.orders as Order[]);
-    } catch (error) {
-      toast.error('Failed to load orders');
+    } catch {
+      toast.error('Failed to load orders');;
     } finally {
       setIsLoading(false);
     }
@@ -247,7 +247,7 @@ export default function CustomersPage() {
     // Fire API call in background
     ordersApi.update(selectedOrder._id, {
       itemDeliveryUpdate: { itemIndex, isDelivered },
-    }).catch((error) => {
+    }).catch(() => {
       toast.error('Failed to update item status');
       // Revert on error
       const revertedItems = [...selectedOrder.items];

@@ -132,7 +132,7 @@ export default function ServersPage() {
       await serversApi.update(server._id, { isActive: !server.isActive });
       updateServer(server._id, { isActive: !server.isActive });
       toast.success(`Server ${server.isActive ? 'deactivated' : 'activated'}`);
-    } catch (error) {
+    } catch {
       toast.error('Failed to update server status');
     }
   };
@@ -144,7 +144,7 @@ export default function ServersPage() {
       await serversApi.delete(server._id);
       removeServer(server._id);
       toast.success('Server deleted');
-    } catch (error) {
+    } catch {
       toast.error('Failed to delete server');
     }
   };

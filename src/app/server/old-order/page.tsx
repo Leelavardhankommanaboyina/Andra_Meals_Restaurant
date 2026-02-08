@@ -3,10 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { 
-  TableNumberInput, 
-  CustomerList, 
-  OrderItemsInput 
+import {
+  TableNumberInput,
+  CustomerList,
+  OrderItemsInput
 } from '@/components/server';
 import { ordersApi } from '@/lib/api-client';
 
@@ -25,6 +25,7 @@ export default function OldOrderPage() {
   const [tableNumber, setTableNumber] = useState<number | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState<string>('');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleTableNext = (table: number) => {

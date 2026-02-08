@@ -11,7 +11,6 @@ import {
   BarChart3,
   LogOut,
   Menu,
-  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 
