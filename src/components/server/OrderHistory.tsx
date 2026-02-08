@@ -48,7 +48,7 @@ export function OrderHistory() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[calc(100vh-3.5rem)]">
+      <div className="flex items-center justify-center min-h-[calc(100vh-7rem)]">
         <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
       </div>
     );
@@ -56,7 +56,7 @@ export function OrderHistory() {
 
   if (orders.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-3.5rem)] p-4">
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-7rem)] p-4">
         <History className="w-20 h-20 text-gray-300 mb-4" />
         <h2 className="text-xl font-semibold text-gray-800 mb-2">No Order History</h2>
         <p className="text-gray-500 text-center">
@@ -67,7 +67,7 @@ export function OrderHistory() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
+    <div className="flex flex-col h-[calc(100vh-7rem)]">
       {/* Header */}
       <div className="bg-white border-b px-4 py-3">
         <h1 className="text-xl font-semibold text-gray-800">Order History</h1>

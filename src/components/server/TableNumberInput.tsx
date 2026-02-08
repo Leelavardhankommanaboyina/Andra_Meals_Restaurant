@@ -53,7 +53,7 @@ export function TableNumberInput({ onNext, initialValue }: TableNumberInputProps
   };
 
   return (
-    <div className="flex items-center justify-center min-h-[calc(100vh-3.5rem)] p-4">
+    <div className="flex items-center justify-center min-h-[calc(100vh-7rem)] p-4">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl text-gray-800">Enter Table Number</CardTitle>

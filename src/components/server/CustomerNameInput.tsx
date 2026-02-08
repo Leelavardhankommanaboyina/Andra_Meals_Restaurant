@@ -81,7 +81,7 @@ export function CustomerNameInput({
   };
 
   return (
-    <div className="flex items-center justify-center min-h-[calc(100vh-3.5rem)] p-4">
+    <div className="flex items-center justify-center min-h-[calc(100vh-7rem)] p-4">
       <Card className="w-full max-w-md shadow-lg">
         <CardHeader className="text-center">
           <div className="flex items-center justify-between">

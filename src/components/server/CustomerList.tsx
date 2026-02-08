@@ -70,7 +70,7 @@ export function CustomerList({ tableNumber, onSelect, onBack }: CustomerListProp
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[calc(100vh-3.5rem)]">
+      <div className="flex items-center justify-center min-h-[calc(100vh-7rem)]">
         <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
       </div>
     );
@@ -78,7 +78,7 @@ export function CustomerList({ tableNumber, onSelect, onBack }: CustomerListProp
 
   if (customers.length === 0) {
     return (
-      <div className="flex items-center justify-center min-h-[calc(100vh-3.5rem)] p-4">
+      <div className="flex items-center justify-center min-h-[calc(100vh-7rem)] p-4">
         <Card className="w-full max-w-md">
           <CardContent className="pt-6 text-center">
             <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
@@ -98,7 +98,7 @@ export function CustomerList({ tableNumber, onSelect, onBack }: CustomerListProp
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
+    <div className="flex flex-col h-[calc(100vh-7rem)]">
       {/* Header */}
       <div className="bg-white border-b px-4 py-3">
         <div className="flex items-center gap-3 mb-3">

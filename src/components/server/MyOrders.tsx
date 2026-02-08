@@ -208,7 +208,7 @@ export function MyOrders() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[calc(100vh-3.5rem)]">
+      <div className="flex items-center justify-center min-h-[calc(100vh-7rem)]">
         <Loader2 className="w-8 h-8 animate-spin text-orange-500" />
       </div>
     );
@@ -216,7 +216,7 @@ export function MyOrders() {
 
   if (myOrders.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-3.5rem)] p-4">
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-7rem)] p-4">
         <ClipboardCheck className="w-20 h-20 text-gray-300 mb-4" />
         <h2 className="text-xl font-semibold text-gray-800 mb-2">No Active Orders</h2>
         <p className="text-gray-500 text-center">
@@ -258,24 +258,26 @@ export function MyOrders() {
   // Calculate total for my undelivered items only
   const myItemsTotal = myUndeliveredItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
-  return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
-      {/* Header */}
-      <div className="bg-white border-b px-4 py-3">
-        <h1 className="text-xl font-semibold text-gray-800">My Orders</h1>
-        <p className="text-sm text-gray-500">
-          {myOrders.length} active order(s) with your items
-        </p>
-      </div>
+  // Handle swipe gesture for card navigation
+  const handleCardSwipe = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    const swipeThreshold = 50;
+    if (info.offset.x < -swipeThreshold && currentIndex < myOrders.length - 1) {
+      nextOrder();
+    } else if (info.offset.x > swipeThreshold && currentIndex > 0) {
+      prevOrder();
+    }
+  };
 
+  return (
+    <div className="flex flex-col h-[calc(100vh-7rem)] justify-center">
       {/* Order Card with Navigation */}
-      <div className="flex-1 flex items-center justify-center p-4 bg-gray-50">
+      <div className="flex-1 flex items-center justify-center p-4 bg-gray-50 overflow-hidden">
         <Button
           variant="ghost"
           size="icon"
           onClick={prevOrder}
           disabled={currentIndex === 0}
-          className="shrink-0"
+          className="shrink-0 hidden sm:flex"
         >
           <ChevronLeft className="w-8 h-8" />
         </Button>
@@ -286,7 +288,11 @@ export function MyOrders() {
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -50 }}
-            className="flex-1 max-w-md mx-4"
+            drag="x"
+            dragConstraints={{ left: 0, right: 0 }}
+            dragElastic={0.2}
+            onDragEnd={handleCardSwipe}
+            className="flex-1 max-w-md mx-2 sm:mx-4 touch-pan-y"
           >
             <Card className="shadow-lg">
               <CardHeader className="pb-3">
@@ -470,26 +476,10 @@ export function MyOrders() {
           size="icon"
           onClick={nextOrder}
           disabled={currentIndex === myOrders.length - 1}
-          className="shrink-0"
+          className="shrink-0 hidden sm:flex"
         >
           <ChevronRight className="w-8 h-8" />
         </Button>
-      </div>
-
-      {/* Bottom Indicator */}
-      <div className="bg-white border-t p-4">
-        <div className="flex justify-center gap-2">
-          {myOrders.map((_, index) => (
-            <button
-              key={index}
-              onClick={() => setCurrentIndex(index)}
-              className={`w-2 h-2 rounded-full transition-colors ${index === currentIndex
-                ? 'bg-orange-500'
-                : 'bg-gray-300 hover:bg-gray-400'
-                }`}
-            />
-          ))}
-        </div>
       </div>
 
       {/* Add Item Dialog */}

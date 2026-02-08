@@ -170,7 +170,7 @@ export function OrderItemsInput({
   );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
+    <div className="flex flex-col h-[calc(100vh-7rem)]">
       {/* Header */}
       <div className="bg-white border-b px-4 py-3 flex items-center gap-3">
         <Button variant="ghost" size="icon" onClick={onBack}>
