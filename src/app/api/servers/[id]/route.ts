@@ -10,7 +10,7 @@ import {
   notFoundResponse,
   serverErrorResponse,
 } from '@/lib/api-response';
-import { emitSocketEvent, SOCKET_EVENTS } from '@/lib/socket-emit';
+import { emitSocketEvent, SOCKET_EVENTS, ROOMS } from '@/lib/socket-emit';
 import bcrypt from 'bcryptjs';
 
 interface RouteParams {
@@ -110,9 +110,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // Emit real-time event
     if (isActive !== undefined) {
-      emitSocketEvent(SOCKET_EVENTS.SERVER_TOGGLED, updatedServer);
+      emitSocketEvent(SOCKET_EVENTS.SERVER_TOGGLED, updatedServer, ROOMS.ADMIN);
     } else {
-      emitSocketEvent(SOCKET_EVENTS.SERVER_UPDATED, updatedServer);
+      emitSocketEvent(SOCKET_EVENTS.SERVER_UPDATED, updatedServer, ROOMS.ADMIN);
     }
 
     return successResponse(updatedServer, 'Server updated successfully');
@@ -147,7 +147,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Emit real-time event
-    emitSocketEvent(SOCKET_EVENTS.SERVER_DELETED, { _id: id });
+    emitSocketEvent(SOCKET_EVENTS.SERVER_DELETED, { _id: id }, ROOMS.ADMIN);
 
     return successResponse(null, 'Server deleted successfully');
   } catch (error) {

@@ -7,6 +7,7 @@ import {
   UtensilsCrossed,
   Users,
   UserCircle,
+  Armchair,
   Receipt,
   BarChart3,
   LogOut,
@@ -23,6 +24,7 @@ const navItems = [
   { href: '/admin/menu-items', label: 'Menu Items', icon: UtensilsCrossed },
   { href: '/admin/servers', label: 'Servers', icon: Users },
   { href: '/admin/customers', label: 'Customers', icon: UserCircle },
+  { href: '/admin/tables', label: 'Tables', icon: Armchair },
   { href: '/admin/bills-history', label: 'Bills History', icon: Receipt },
   { href: '/admin/metrics', label: 'Business Metrics', icon: BarChart3 },
 ];

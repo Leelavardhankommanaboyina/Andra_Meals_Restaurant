@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 export interface OrderItem {
+  _id?: string;
   menuItem?: string;  // From API response
   menuItemId?: string;  // For creating new orders
   name: string;
@@ -15,6 +16,7 @@ export interface Order {
   _id: string;
   tableNumber: number;
   customerName: string;
+  groupSize?: number | null;
   items: OrderItem[];
   status: 'ongoing' | 'completed' | 'paid';
   serverId?: string;
@@ -155,9 +157,15 @@ export const useOrderStore = create<OrderState>((set) => ({
   setMyOrders: (orders) => set({ myOrders: orders }),
 
   addToMyOrders: (order) =>
-    set((state) => ({
-      myOrders: [order, ...state.myOrders],
-    })),
+    set((state) => {
+      const existingIndex = state.myOrders.findIndex((existingOrder) => existingOrder._id === order._id);
+      if (existingIndex >= 0) {
+        const updatedOrders = [...state.myOrders];
+        updatedOrders[existingIndex] = order;
+        return { myOrders: updatedOrders };
+      }
+      return { myOrders: [order, ...state.myOrders] };
+    }),
 
   updateOrderInMyOrders: (orderId, updates) =>
     set((state) => ({
@@ -192,7 +200,15 @@ export const useOrderStore = create<OrderState>((set) => ({
   setOrderHistory: (orders) => set({ orderHistory: orders }),
 
   addToOrderHistory: (order) =>
-    set((state) => ({
-      orderHistory: [order, ...state.orderHistory],
-    })),
+    set((state) => {
+      const existingIndex = state.orderHistory.findIndex(
+        (existingOrder) => existingOrder._id === order._id
+      );
+      if (existingIndex >= 0) {
+        const updatedOrderHistory = [...state.orderHistory];
+        updatedOrderHistory[existingIndex] = order;
+        return { orderHistory: updatedOrderHistory };
+      }
+      return { orderHistory: [order, ...state.orderHistory] };
+    }),
 }));

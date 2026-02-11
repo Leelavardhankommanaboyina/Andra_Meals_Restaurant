@@ -11,7 +11,7 @@ import {
   notFoundResponse,
   serverErrorResponse,
 } from '@/lib/api-response';
-import { emitSocketEvent, SOCKET_EVENTS } from '@/lib/socket-emit';
+import { emitSocketEvent, SOCKET_EVENTS, ROOMS } from '@/lib/socket-emit';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -89,9 +89,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // Emit real-time event
     if (validationResult.data.isActive !== undefined) {
-      emitSocketEvent(SOCKET_EVENTS.MENU_ITEM_TOGGLED, updatedItem);
+      emitSocketEvent(SOCKET_EVENTS.MENU_ITEM_TOGGLED, updatedItem, [ROOMS.ADMIN, ROOMS.SERVERS]);
     } else {
-      emitSocketEvent(SOCKET_EVENTS.MENU_ITEM_UPDATED, updatedItem);
+      emitSocketEvent(SOCKET_EVENTS.MENU_ITEM_UPDATED, updatedItem, [ROOMS.ADMIN, ROOMS.SERVERS]);
     }
 
     return successResponse(updatedItem, 'Menu item updated successfully');
@@ -123,7 +123,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // Emit real-time event
-    emitSocketEvent(SOCKET_EVENTS.MENU_ITEM_DELETED, { _id: id });
+    emitSocketEvent(SOCKET_EVENTS.MENU_ITEM_DELETED, { _id: id }, [ROOMS.ADMIN, ROOMS.SERVERS]);
 
     return successResponse(null, 'Menu item deleted successfully');
   } catch (error) {

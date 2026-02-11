@@ -51,7 +51,7 @@ export default function BillsHistoryPage() {
         params.endDate = end.toISOString();
       }
 
-      const response = await billsApi.getAll(params);
+      const response = await billsApi.getAll({ ...params, page: 1, limit: 200 });
       setBills(response.data.bills);
       setTotalAmount(response.data.totalAmount);
     } catch (error) {

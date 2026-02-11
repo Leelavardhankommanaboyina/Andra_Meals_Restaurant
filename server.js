@@ -37,6 +37,17 @@ const ROOMS = {
   SERVERS: 'servers',
 };
 
+const getTokenFromCookieHeader = (cookieHeader) => {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(/(?:^|;\s*)auth-token=([^;]+)/);
+  if (!match) return null;
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
+};
+
 app.prepare().then(() => {
   const httpServer = createServer((req, res) => {
     const parsedUrl = parse(req.url, true);
@@ -64,37 +75,30 @@ app.prepare().then(() => {
 
   // Socket authentication middleware
   io.use((socket, next) => {
-    const token = socket.handshake.auth.token || socket.handshake.headers.cookie?.split('auth-token=')[1]?.split(';')[0];
+    const token = socket.handshake.auth.token || getTokenFromCookieHeader(socket.handshake.headers.cookie);
+    const jwtSecret = process.env.JWT_SECRET;
 
+    if (!jwtSecret) {
+      return next(new Error('JWT secret is not configured'));
+    }
     if (!token) {
-      // Allow connection but mark as unauthenticated
-      socket.data.authenticated = false;
-      socket.data.user = null;
-      return next();
+      return next(new Error('Authentication required'));
     }
 
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      const decoded = jwt.verify(token, jwtSecret);
       socket.data.authenticated = true;
       socket.data.user = decoded;
-      next();
-    } catch (err) {
-      socket.data.authenticated = false;
-      socket.data.user = null;
-      next();
+      return next();
+    } catch {
+      return next(new Error('Invalid authentication token'));
     }
   });
 
   io.on('connection', (socket) => {
-    console.log('Client connected:', socket.id, socket.data.authenticated ? `(${socket.data.user?.username})` : '(unauthenticated)');
+    console.log('Client connected:', socket.id, `(${socket.data.user?.username})`);
 
     socket.on(SOCKET_EVENTS.JOIN_ROOM, (room) => {
-      // Only allow authenticated users to join rooms
-      if (!socket.data.authenticated) {
-        console.log(`Unauthenticated socket ${socket.id} tried to join room: ${room}`);
-        return;
-      }
-
       // Validate room based on user role
       if (room === ROOMS.ADMIN && socket.data.user?.role !== 'admin') {
         console.log(`Non-admin user ${socket.data.user?.username} tried to join admin room`);

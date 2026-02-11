@@ -3,6 +3,7 @@ import mongoose, { Schema, Document, Model } from 'mongoose';
 export type OrderStatus = 'ongoing' | 'completed' | 'paid' | 'cancelled';
 
 export interface IOrderItem {
+  _id?: mongoose.Types.ObjectId;
   menuItem: mongoose.Types.ObjectId;
   name: string;
   price: number;
@@ -17,6 +18,7 @@ export interface IOrder extends Document {
   _id: mongoose.Types.ObjectId;
   tableNumber: number;
   customerName: string;
+  groupSize?: number | null;
   items: IOrderItem[];
   status: OrderStatus;
   serverId: mongoose.Types.ObjectId; // Original server who created the order
@@ -64,8 +66,7 @@ const OrderItemSchema = new Schema<IOrderItem>(
       type: String,
       required: true,
     },
-  },
-  { _id: false }
+  }
 );
 
 const OrderSchema = new Schema<IOrder>(
@@ -80,6 +81,12 @@ const OrderSchema = new Schema<IOrder>(
       required: [true, 'Customer name is required'],
       trim: true,
       maxlength: [50, 'Customer name cannot exceed 50 characters'],
+    },
+    groupSize: {
+      type: Number,
+      min: [1, 'Group size must be at least 1'],
+      max: [30, 'Group size cannot exceed 30'],
+      default: null,
     },
     items: {
       type: [OrderItemSchema],

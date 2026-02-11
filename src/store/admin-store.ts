@@ -23,12 +23,16 @@ export interface Customer {
   _id: string;
   tableNumber: number;
   customerName: string;
+  groupSize?: number | null;
   status: 'ongoing' | 'completed' | 'paid';
   items: Array<{
+    _id?: string;
     name: string;
     price: number;
     quantity: number;
     isDelivered: boolean;
+    addedByServerId?: string;
+    addedByServerName?: string;
   }>;
   totalAmount: number;
   serverName: string;
@@ -143,8 +147,8 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     if (currentOngoing.length === 0) set({ isLoading: true });
     try {
       const [ongoingRes, completedRes] = await Promise.all([
-        ordersApi.getAll({ status: 'ongoing' }),
-        ordersApi.getAll({ status: 'completed' }),
+        ordersApi.getAll({ status: 'ongoing', page: 1, limit: 100 }),
+        ordersApi.getAll({ status: 'completed', page: 1, limit: 100 }),
       ]);
       set({
         ongoingOrders: ongoingRes.data.orders as Customer[],
@@ -161,7 +165,7 @@ export const useAdminStore = create<AdminState>((set, get) => ({
     const currentBills = get().bills;
     if (currentBills.length === 0) set({ isLoading: true });
     try {
-      const response = await billsApi.getAll({ startDate, endDate });
+      const response = await billsApi.getAll({ startDate, endDate, page: 1, limit: 200 });
       set({ bills: response.data.bills as Bill[], isLoading: false });
     } catch (error) {
       console.error('Failed to fetch bills:', error);
@@ -177,9 +181,20 @@ export const useAdminStore = create<AdminState>((set, get) => ({
 
   addMenuItem: (item) =>
     set((state) => {
+      const existingIndex = state.menuItems.findIndex((menuItem) => menuItem._id === item._id);
       const categories = state.menuCategories.includes(item.category)
         ? state.menuCategories
         : [...state.menuCategories, item.category];
+
+      if (existingIndex >= 0) {
+        const updatedItems = [...state.menuItems];
+        updatedItems[existingIndex] = item;
+        return {
+          menuItems: updatedItems,
+          menuCategories: categories,
+        };
+      }
+
       return {
         menuItems: [item, ...state.menuItems],
         menuCategories: categories,
@@ -204,9 +219,15 @@ export const useAdminStore = create<AdminState>((set, get) => ({
   setServers: (servers) => set({ servers }),
 
   addServer: (server) =>
-    set((state) => ({
-      servers: [server, ...state.servers],
-    })),
+    set((state) => {
+      const existingIndex = state.servers.findIndex((existingServer) => existingServer._id === server._id);
+      if (existingIndex >= 0) {
+        const updatedServers = [...state.servers];
+        updatedServers[existingIndex] = server;
+        return { servers: updatedServers };
+      }
+      return { servers: [server, ...state.servers] };
+    }),
 
   updateServer: (serverId, updates) =>
     set((state) => ({

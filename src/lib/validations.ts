@@ -79,12 +79,18 @@ export const createOrderSchema = z.object({
     .number()
     .int('Table number must be a whole number')
     .min(MIN_TABLE, `Table number must be at least ${MIN_TABLE}`)
-    .max(MAX_TABLE, `Table number cannot exceed ${MAX_TABLE}`),
+    .max(999, 'Table number seems invalid'),
   customerName: z
     .string()
     .min(1, 'Customer name is required')
     .max(50, 'Customer name cannot exceed 50 characters')
     .trim(),
+  groupSize: z
+    .number()
+    .int('Group size must be a whole number')
+    .min(1, 'Group size must be at least 1')
+    .max(30, 'Group size cannot exceed 30')
+    .optional(),
   items: z
     .array(orderItemSchema)
     .min(1, 'Order must have at least one item'),
@@ -96,10 +102,20 @@ export const addItemsToOrderSchema = z.object({
     .min(1, 'Must add at least one item'),
 });
 
-export const updateItemDeliverySchema = z.object({
-  itemIndex: z.number().int().min(0),
+const orderItemReferenceSchema = z
+  .object({
+    itemId: z.string().min(1, 'Item ID is required').optional(),
+    itemIndex: z.number().int().min(0).optional(),
+  })
+  .refine((value) => value.itemId !== undefined || value.itemIndex !== undefined, {
+    message: 'Provide itemId or itemIndex',
+  });
+
+export const updateItemDeliverySchema = orderItemReferenceSchema.extend({
   isDelivered: z.boolean(),
 });
+
+export const removeOrderItemSchema = orderItemReferenceSchema;
 
 // Search validation
 export const searchSchema = z.object({

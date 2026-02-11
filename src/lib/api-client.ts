@@ -1,9 +1,7 @@
-import Cookies from 'js-cookie';
-
 const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || '';
 
 interface ApiOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   headers?: Record<string, string>;
 }
@@ -11,13 +9,10 @@ interface ApiOptions {
 async function apiClient<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
   const { method = 'GET', body, headers = {} } = options;
 
-  const token = Cookies.get('auth-token');
-
   const config: RequestInit = {
     method,
     headers: {
       'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
       ...headers,
     },
     credentials: 'include',
@@ -44,7 +39,6 @@ export const authApi = {
       success: boolean;
       data: {
         user: { id: string; username: string; role: 'admin' | 'server' };
-        token: string;
       };
     }>('/api/auth/login', {
       method: 'POST',
@@ -126,12 +120,21 @@ export const serversApi = {
 
 // Orders API
 export const ordersApi = {
-  getAll: (params?: { status?: string; tableNumber?: number; myOrders?: boolean; serverId?: string }) => {
+  getAll: (params?: {
+    status?: string;
+    tableNumber?: number;
+    myOrders?: boolean;
+    serverId?: string;
+    page?: number;
+    limit?: number;
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.status) searchParams.set('status', params.status);
     if (params?.tableNumber) searchParams.set('tableNumber', String(params.tableNumber));
     if (params?.myOrders) searchParams.set('myOrders', 'true');
     if (params?.serverId) searchParams.set('serverId', params.serverId);
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
 
     return apiClient<{
       success: boolean;
@@ -140,7 +143,9 @@ export const ordersApi = {
           _id: string;
           tableNumber: number;
           customerName: string;
+          groupSize?: number | null;
           items: Array<{
+            _id?: string;
             menuItem: string;
             name: string;
             price: number;
@@ -157,6 +162,13 @@ export const ordersApi = {
           updatedAt: string;
         }>;
         total: number;
+        pagination?: {
+          page: number;
+          limit: number;
+          totalPages: number;
+          hasNext: boolean;
+          hasPrev: boolean;
+        };
       };
     }>(`/api/orders?${searchParams.toString()}`);
   },
@@ -168,7 +180,9 @@ export const ordersApi = {
         _id: string;
         tableNumber: number;
         customerName: string;
+        groupSize?: number | null;
         items: Array<{
+          _id?: string;
           menuItem: string;
           name: string;
           price: number;
@@ -203,6 +217,7 @@ export const ordersApi = {
   create: (data: {
     tableNumber: number;
     customerName: string;
+    groupSize?: number;
     items: Array<{ menuItemId: string; name: string; price: number; quantity: number }>;
   }) => apiClient('/api/orders', { method: 'POST', body: data }),
 
@@ -211,8 +226,8 @@ export const ordersApi = {
     data: {
       status?: 'ongoing' | 'completed' | 'paid';
       items?: Array<{ menuItemId: string; name: string; price: number; quantity: number }>;
-      itemDeliveryUpdate?: { itemIndex: number; isDelivered: boolean };
-      removeItem?: { itemIndex: number };
+      itemDeliveryUpdate?: { itemId?: string; itemIndex?: number; isDelivered: boolean };
+      removeItem?: { itemId?: string; itemIndex?: number };
     }
   ) => apiClient(`/api/orders/${id}`, { method: 'PATCH', body: data }),
 
@@ -221,11 +236,19 @@ export const ordersApi = {
 
 // Bills API
 export const billsApi = {
-  getAll: (params?: { startDate?: string; endDate?: string; tableNumber?: number }) => {
+  getAll: (params?: {
+    startDate?: string;
+    endDate?: string;
+    tableNumber?: number;
+    page?: number;
+    limit?: number;
+  }) => {
     const searchParams = new URLSearchParams();
     if (params?.startDate) searchParams.set('startDate', params.startDate);
     if (params?.endDate) searchParams.set('endDate', params.endDate);
     if (params?.tableNumber) searchParams.set('tableNumber', String(params.tableNumber));
+    if (params?.page) searchParams.set('page', String(params.page));
+    if (params?.limit) searchParams.set('limit', String(params.limit));
 
     return apiClient<{
       success: boolean;
@@ -245,6 +268,13 @@ export const billsApi = {
         }>;
         total: number;
         totalAmount: number;
+        pagination?: {
+          page: number;
+          limit: number;
+          totalPages: number;
+          hasNext: boolean;
+          hasPrev: boolean;
+        };
       };
     }>(`/api/bills?${searchParams.toString()}`);
   },
@@ -275,9 +305,48 @@ export const metricsApi = {
   },
 };
 
+// Tables API
+export const tablesApi = {
+  getAll: () =>
+    apiClient<{
+      success: boolean;
+      data: {
+        tables: Array<{
+          _id: string;
+          tableNumber: number;
+          chairsTop: number;
+          chairsBottom: number;
+          totalSeats: number;
+          occupiedSeats: number;
+          availableSeats: number;
+          overflowSeats: number;
+        }>;
+        summary: {
+          totalTables: number;
+          totalSeats: number;
+          occupiedSeats: number;
+          availableSeats: number;
+        };
+      };
+    }>('/api/tables'),
+
+  configure: (data: {
+    totalTables: number;
+    defaultChairsTop?: number;
+    defaultChairsBottom?: number;
+  }) => apiClient('/api/tables', { method: 'PUT', body: data }),
+
+  updateTable: (tableNumber: number, data: { chairsTop: number; chairsBottom: number }) =>
+    apiClient(`/api/tables/${tableNumber}`, { method: 'PATCH', body: data }),
+};
+
 // Seed API
 export const seedApi = {
-  seed: () => apiClient('/api/seed', { method: 'POST' }),
+  seed: (seedKey: string) =>
+    apiClient('/api/seed', {
+      method: 'POST',
+      headers: { 'x-seed-key': seedKey },
+    }),
 };
 
 export default apiClient;

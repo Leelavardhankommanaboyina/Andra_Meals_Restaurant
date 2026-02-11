@@ -76,7 +76,6 @@ export async function POST(request: NextRequest) {
           username: user.username,
           role: user.role,
         },
-        token,
       },
       API_MESSAGES.LOGIN_SUCCESS
     );

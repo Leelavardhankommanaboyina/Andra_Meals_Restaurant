@@ -11,9 +11,10 @@ import { toast } from 'sonner';
 
 interface CustomerNameInputProps {
   tableNumber: number;
-  onNext: (customerName: string) => void;
+  onNext: (customerName: string, groupSize?: number) => void;
   onBack: () => void;
   initialValue?: string;
+  initialGroupSize?: number | null;
 }
 
 export function CustomerNameInput({
@@ -21,10 +22,15 @@ export function CustomerNameInput({
   onNext,
   onBack,
   initialValue = '',
+  initialGroupSize = null,
 }: CustomerNameInputProps) {
   const [customerName, setCustomerName] = useState<string>(initialValue);
+  const [groupSize, setGroupSize] = useState<string>(
+    initialGroupSize ? String(initialGroupSize) : ''
+  );
   const [existingNames, setExistingNames] = useState<string[]>([]);
   const [error, setError] = useState<string>('');
+  const [groupSizeError, setGroupSizeError] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
 
   // Fetch existing customer names for this table
@@ -53,6 +59,14 @@ export function CustomerNameInput({
     setError('');
   };
 
+  const handleGroupSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (value === '' || /^\d+$/.test(value)) {
+      setGroupSize(value);
+      setGroupSizeError('');
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -77,7 +91,17 @@ export function CustomerNameInput({
       return;
     }
 
-    onNext(trimmedName);
+    let parsedGroupSize: number | undefined;
+    if (groupSize.trim() !== '') {
+      const parsed = Number(groupSize);
+      if (!Number.isInteger(parsed) || parsed < 1 || parsed > 30) {
+        setGroupSizeError('Group size must be between 1 and 30');
+        return;
+      }
+      parsedGroupSize = parsed;
+    }
+
+    onNext(trimmedName, parsedGroupSize);
   };
 
   return (
@@ -144,6 +168,24 @@ export function CustomerNameInput({
                       ))}
                     </div>
                   </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="groupSize" className="text-base">
+                  Group Size (Optional)
+                </Label>
+                <Input
+                  id="groupSize"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="e.g., 4"
+                  value={groupSize}
+                  onChange={handleGroupSizeChange}
+                  className={`h-11 w-28 ${groupSizeError ? 'border-red-500' : ''}`}
+                />
+                {groupSizeError && (
+                  <p className="text-red-500 text-sm">{groupSizeError}</p>
                 )}
               </div>
               <div className="flex gap-3">

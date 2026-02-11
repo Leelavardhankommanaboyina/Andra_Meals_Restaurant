@@ -45,16 +45,13 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       const response = await authApi.login(data.username, data.password);
-      const { user, token } = response.data;
+      const { user } = response.data;
 
-      setAuth(
-        {
-          userId: user.id,
-          username: user.username,
-          role: user.role,
-        },
-        token
-      );
+      setAuth({
+        userId: user.id,
+        username: user.username,
+        role: user.role,
+      });
 
       toast.success('Login successful!');
 

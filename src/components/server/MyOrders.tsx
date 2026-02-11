@@ -38,7 +38,7 @@ export function MyOrders() {
   const fetchOrders = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await ordersApi.getAll({ myOrders: true, status: 'ongoing' });
+      const response = await ordersApi.getAll({ myOrders: true, status: 'ongoing', page: 1, limit: 100 });
       const orders = response.data.orders;
       setMyOrders(orders);
 
@@ -69,9 +69,10 @@ export function MyOrders() {
   const handleDeliveryToggle = async (
     orderId: string,
     itemIndex: number,
-    isDelivered: boolean
+    isDelivered: boolean,
+    itemId?: string
   ) => {
-    const key = `${orderId}-${itemIndex}`;
+    const key = itemId ? `${orderId}-${itemId}` : `${orderId}-${itemIndex}`;
     if (updatingItems.has(key)) return;
 
     // OPTIMISTIC UPDATE: Update store immediately
@@ -97,7 +98,7 @@ export function MyOrders() {
 
     // Fire and forget API call
     ordersApi.update(orderId, {
-      itemDeliveryUpdate: { itemIndex, isDelivered },
+      itemDeliveryUpdate: { itemId, itemIndex, isDelivered },
     }).catch((error) => {
       console.error('Error updating delivery status:', error);
       toast.error('Failed to update item status');
@@ -124,8 +125,8 @@ export function MyOrders() {
   };
 
   // Handle removing an item from order (only undelivered items)
-  const handleRemoveItem = async (orderId: string, itemIndex: number) => {
-    const key = `${orderId}-${itemIndex}`;
+  const handleRemoveItem = async (orderId: string, itemIndex: number, itemId?: string) => {
+    const key = itemId ? `${orderId}-${itemId}` : `${orderId}-${itemIndex}`;
     if (updatingItems.has(key)) return;
 
     const order = myOrders.find(o => o._id === orderId);
@@ -157,7 +158,7 @@ export function MyOrders() {
 
     try {
       await ordersApi.update(orderId, {
-        removeItem: { itemIndex },
+        removeItem: { itemId, itemIndex },
       });
       toast.success(isLastItem ? 'Order deleted' : `${item.name} removed from order`);
     } catch (error) {
@@ -335,15 +336,15 @@ export function MyOrders() {
                     )}
                     {sortedMyItems.map((item) => {
                       const originalIndex = item.originalIndex;
-                      const key = `${currentOrder._id}-${originalIndex}`;
+                      const key = item._id ? `${currentOrder._id}-${item._id}` : `${currentOrder._id}-${originalIndex}`;
                       const isUpdating = updatingItems.has(key);
 
                       const handleClick = () => {
                         if (!isUpdating && !item.isDelivered) {
-                          handleDeliveryToggle(currentOrder._id, originalIndex, true);
+                          handleDeliveryToggle(currentOrder._id, originalIndex, true, item._id);
                         } else if (!isUpdating && item.isDelivered) {
                           // Allow unmarking delivered items
-                          handleDeliveryToggle(currentOrder._id, originalIndex, false);
+                          handleDeliveryToggle(currentOrder._id, originalIndex, false, item._id);
                         }
                       };
 
@@ -353,13 +354,13 @@ export function MyOrders() {
 
                         const swipeThreshold = 100;
                         if (Math.abs(info.offset.x) > swipeThreshold) {
-                          handleRemoveItem(currentOrder._id, originalIndex);
+                          handleRemoveItem(currentOrder._id, originalIndex, item._id);
                         }
                       };
 
                       return (
                         <motion.div
-                          key={`${item.menuItem}-${originalIndex}`}
+                          key={item._id || `${item.menuItem}-${originalIndex}`}
                           layout
                           drag={!item.isDelivered ? "x" : false}
                           dragConstraints={{ left: 0, right: 0 }}
@@ -379,7 +380,8 @@ export function MyOrders() {
                               handleDeliveryToggle(
                                 currentOrder._id,
                                 originalIndex,
-                                checked as boolean
+                                checked as boolean,
+                                item._id
                               )
                             }
                             disabled={isUpdating}

@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import mongoose from 'mongoose';
 import dbConnect from '@/lib/db';
-import { Order, User } from '@/lib/models';
+import { MenuItem, Order, Table, User } from '@/lib/models';
 import { getCurrentUser } from '@/lib/auth';
 import { createOrderSchema } from '@/lib/validations';
 import {
@@ -10,7 +10,42 @@ import {
   unauthorizedResponse,
   serverErrorResponse,
 } from '@/lib/api-response';
-import { emitSocketEvent, SOCKET_EVENTS } from '@/lib/socket-emit';
+import { emitSocketEvent, ROOMS, SOCKET_EVENTS } from '@/lib/socket-emit';
+import { ensureDefaultTablesConfigured } from '@/lib/tables';
+
+type RequestedOrderItem = {
+  menuItemId: string;
+  quantity: number;
+};
+
+type MenuItemLookupResult =
+  | { error: string }
+  | { menuItemById: Map<string, { name: string; price: number }> };
+
+async function resolveMenuItems(items: RequestedOrderItem[]): Promise<MenuItemLookupResult> {
+  const uniqueMenuItemIds = Array.from(new Set(items.map((item) => item.menuItemId)));
+
+  if (uniqueMenuItemIds.some((id) => !mongoose.Types.ObjectId.isValid(id))) {
+    return { error: 'One or more menu item IDs are invalid' };
+  }
+
+  const menuItems = await MenuItem.find({
+    _id: { $in: uniqueMenuItemIds },
+    isActive: true,
+  })
+    .select('_id name price')
+    .lean();
+
+  if (menuItems.length !== uniqueMenuItemIds.length) {
+    return { error: 'One or more menu items are unavailable' };
+  }
+
+  const menuItemById = new Map(
+    menuItems.map((item) => [item._id.toString(), { name: item.name, price: item.price }])
+  );
+
+  return { menuItemById };
+}
 
 // GET /api/orders - Get orders based on role and filters
 export async function GET(_request: NextRequest) {
@@ -27,25 +62,38 @@ export async function GET(_request: NextRequest) {
     const tableNumber = searchParams.get('tableNumber');
     const serverId = searchParams.get('serverId');
     const myOrders = searchParams.get('myOrders') === 'true';
+    const pageParam = searchParams.get('page');
+    const limitParam = searchParams.get('limit');
+    const shouldPaginate = pageParam !== null || limitParam !== null;
+    const parsedPage = parseInt(pageParam || '1');
+    const parsedLimit = parseInt(limitParam || '20');
+    const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const limit =
+      Number.isInteger(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 20;
 
     // Build query
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const query: any = {};
+    const userObjectId = new mongoose.Types.ObjectId(user.userId);
 
     // For "My Orders" - find orders where I have items to deliver
     // This supports the distributed system where any server can add items
     if (user.role === 'server' && myOrders) {
-      // Convert user.userId to ObjectId for proper MongoDB matching
-      // Also query for string version to handle legacy data
-      const userObjectId = new mongoose.Types.ObjectId(user.userId);
-      // Find orders where this server has items OR is the original server
-      // Check both ObjectId and string formats for backward compatibility
-      query.$or = [
-        { 'items.addedByServerId': userObjectId },
-        { 'items.addedByServerId': user.userId },  // Legacy string format
-        { serverId: userObjectId },
-        { serverId: user.userId }  // Legacy string format
-      ];
+      if (status === 'ongoing') {
+        // "My Orders" should only include orders where this server still has undelivered items.
+        query.$or = [
+          { items: { $elemMatch: { addedByServerId: userObjectId, isDelivered: false } } },
+          { items: { $elemMatch: { addedByServerId: user.userId, isDelivered: false } } }, // Legacy string format
+        ];
+      } else {
+        // For history-like views, include orders this server participated in.
+        query.$or = [
+          { 'items.addedByServerId': userObjectId },
+          { 'items.addedByServerId': user.userId }, // Legacy string format
+          { serverId: userObjectId },
+          { serverId: user.userId }, // Legacy string format
+        ];
+      }
     }
 
     // Admin can filter by serverId
@@ -65,29 +113,42 @@ export async function GET(_request: NextRequest) {
       } else {
         query.status = status;
       }
+    } else if (user.role === 'server' && myOrders) {
+      // Default to active states for server my-orders queries.
+      query.status = { $in: ['ongoing', 'completed'] };
     }
 
     if (tableNumber) {
       query.tableNumber = parseInt(tableNumber);
     }
 
-    const orders = await Order.find(query)
-      .sort({ createdAt: -1 })
-      .lean();
+    const projection =
+      '_id tableNumber customerName groupSize items status serverId serverName totalAmount createdAt updatedAt paidAt';
 
-    // For server's "My Orders", filter to only show orders where they have undelivered items
-    let filteredOrders = orders;
-    if (user.role === 'server' && myOrders && status === 'ongoing') {
-      filteredOrders = orders.filter(order =>
-        order.items.some(item =>
-          item.addedByServerId?.toString() === user.userId && !item.isDelivered
-        )
-      );
+    if (shouldPaginate) {
+      const skip = (page - 1) * limit;
+      const [orders, total] = await Promise.all([
+        Order.find(query).select(projection).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+        Order.countDocuments(query),
+      ]);
+
+      return successResponse({
+        orders,
+        total,
+        pagination: {
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit) || 1,
+          hasNext: skip + orders.length < total,
+          hasPrev: page > 1,
+        },
+      });
     }
 
+    const orders = await Order.find(query).select(projection).sort({ createdAt: -1 }).lean();
     return successResponse({
-      orders: filteredOrders,
-      total: filteredOrders.length,
+      orders,
+      total: orders.length,
     });
   } catch {
     return serverErrorResponse('Failed to fetch orders');
@@ -113,7 +174,13 @@ export async function POST(request: NextRequest) {
       return errorResponse(errors.join(', '));
     }
 
-    const { tableNumber, customerName, items } = validationResult.data;
+    const { tableNumber, customerName, groupSize, items } = validationResult.data;
+
+    await ensureDefaultTablesConfigured();
+    const table = await Table.findOne({ tableNumber }).select('tableNumber').lean();
+    if (!table) {
+      return errorResponse(`Table ${tableNumber} is not configured`);
+    }
 
     // Helper function to escape regex special characters
     const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -137,12 +204,17 @@ export async function POST(request: NextRequest) {
       return errorResponse('Server not found');
     }
 
-    // Create order with items - track which server added each item
+    const resolvedMenuItems = await resolveMenuItems(items);
+    if ('error' in resolvedMenuItems) {
+      return errorResponse(resolvedMenuItems.error);
+    }
+
+    // Create order with server-validated item names and prices
     const serverObjectId = new mongoose.Types.ObjectId(user.userId);
     const orderItems = items.map((item) => ({
       menuItem: item.menuItemId,
-      name: item.name,
-      price: item.price,
+      name: resolvedMenuItems.menuItemById.get(item.menuItemId)!.name,
+      price: resolvedMenuItems.menuItemById.get(item.menuItemId)!.price,
       quantity: item.quantity,
       isDelivered: false,
       addedByServerId: serverObjectId,
@@ -152,6 +224,7 @@ export async function POST(request: NextRequest) {
     const newOrder = await Order.create({
       tableNumber,
       customerName,
+      groupSize: groupSize ?? null,
       items: orderItems,
       serverId: serverObjectId,
       serverName: serverUser.username,
@@ -159,7 +232,7 @@ export async function POST(request: NextRequest) {
     });
 
     // Emit real-time event
-    emitSocketEvent(SOCKET_EVENTS.ORDER_CREATED, newOrder);
+    emitSocketEvent(SOCKET_EVENTS.ORDER_CREATED, newOrder, [ROOMS.ADMIN, ROOMS.SERVERS]);
 
     return successResponse(newOrder, 'Order created successfully', 201);
   } catch {

@@ -7,24 +7,21 @@ import { SOCKET_EVENTS, SOCKET_ROOMS } from './constants';
 declare global {
   interface Window {
     __socketInstance?: Socket | null;
-    __socketToken?: string | undefined;
     __socketInitialized?: boolean;
   }
 }
 
 const getWindowSocket = () => {
-  if (typeof window === 'undefined') return { socket: null, token: undefined, initialized: false };
+  if (typeof window === 'undefined') return { socket: null, initialized: false };
   return {
     socket: window.__socketInstance ?? null,
-    token: window.__socketToken,
     initialized: window.__socketInitialized ?? false,
   };
 };
 
-const setWindowSocket = (socket: Socket | null, token?: string, initialized = false) => {
+const setWindowSocket = (socket: Socket | null, initialized = false) => {
   if (typeof window === 'undefined') return;
   window.__socketInstance = socket;
-  window.__socketToken = token;
   window.__socketInitialized = initialized;
 };
 
@@ -32,11 +29,10 @@ export const getSocket = (): Socket | null => getWindowSocket().socket;
 
 export const isSocketConnected = (): boolean => getSocket()?.connected ?? false;
 
-export const initSocket = (token?: string, forceNew = false): Socket => {
-  const { socket, token: currentToken, initialized } = getWindowSocket();
+export const initSocket = (forceNew = false): Socket => {
+  const { socket, initialized } = getWindowSocket();
 
-  // If already initialized with same token, return existing socket
-  if (initialized && socket && currentToken === token && !forceNew) {
+  if (initialized && socket && !forceNew) {
     console.log('[Socket Client] Reusing existing socket:', socket.id, 'connected:', socket.connected);
     // Reconnect if disconnected
     if (socket.disconnected) {
@@ -46,7 +42,6 @@ export const initSocket = (token?: string, forceNew = false): Socket => {
     return socket;
   }
 
-  // If token changed or force new, cleanup old socket
   if (socket) {
     console.log('[Socket Client] Cleaning up old socket:', socket.id);
     socket.removeAllListeners();
@@ -59,9 +54,6 @@ export const initSocket = (token?: string, forceNew = false): Socket => {
   const newSocket = io({
     path: '/api/socketio',
     addTrailingSlash: false,
-    auth: {
-      token: token,
-    },
     withCredentials: true,
     // Stability optimizations
     reconnection: true,
@@ -76,7 +68,7 @@ export const initSocket = (token?: string, forceNew = false): Socket => {
     autoConnect: true,
   });
 
-  setWindowSocket(newSocket, token, true);
+  setWindowSocket(newSocket, true);
   return newSocket;
 };
 
@@ -101,7 +93,7 @@ export const disconnectSocket = (): void => {
     socket.removeAllListeners();
     socket.disconnect();
   }
-  setWindowSocket(null, undefined, false);
+  setWindowSocket(null, false);
 };
 
 export { SOCKET_EVENTS, SOCKET_ROOMS as ROOMS };

@@ -27,6 +27,15 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const tableNumber = searchParams.get('tableNumber');
+    const pageParam = searchParams.get('page');
+    const limitParam = searchParams.get('limit');
+    const shouldPaginate = pageParam !== null || limitParam !== null;
+    const parsedPage = parseInt(pageParam || '1');
+    const parsedLimit = parseInt(limitParam || '20');
+    const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const limit =
+      Number.isInteger(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 100) : 20;
+    const skip = (page - 1) * limit;
 
     // Build query
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -46,18 +55,54 @@ export async function GET(request: NextRequest) {
       query.tableNumber = parseInt(tableNumber);
     }
 
-    const bills = await Order.find(query)
-      .sort({ paidAt: -1 })
-      .lean();
+    const summaryPromise = Order.aggregate([
+      { $match: query },
+      {
+        $group: {
+          _id: null,
+          totalAmount: { $sum: '$totalAmount' },
+          totalBills: { $sum: 1 },
+        },
+      },
+    ]);
 
-    // Calculate totals
-    const totalAmount = bills.reduce((sum, bill) => sum + bill.totalAmount, 0);
+    const billsQuery = Order.find(query)
+      .select('_id tableNumber customerName items.name items.price items.quantity totalAmount serverName paidAt')
+      .sort({ paidAt: -1 });
 
-    return successResponse({
+    const billsPromise = shouldPaginate ? billsQuery.skip(skip).limit(limit).lean() : billsQuery.lean();
+
+    const [summary, bills] = await Promise.all([summaryPromise, billsPromise]);
+    const summaryRow = summary[0] || { totalAmount: 0, totalBills: 0 };
+
+    const responseData = {
       bills,
-      total: bills.length,
-      totalAmount,
-    });
+      total: summaryRow.totalBills,
+      totalAmount: summaryRow.totalAmount,
+    } as {
+      bills: typeof bills;
+      total: number;
+      totalAmount: number;
+      pagination?: {
+        page: number;
+        limit: number;
+        totalPages: number;
+        hasNext: boolean;
+        hasPrev: boolean;
+      };
+    };
+
+    if (shouldPaginate) {
+      responseData.pagination = {
+        page,
+        limit,
+        totalPages: Math.ceil(summaryRow.totalBills / limit) || 1,
+        hasNext: skip + bills.length < summaryRow.totalBills,
+        hasPrev: page > 1,
+      };
+    }
+
+    return successResponse(responseData);
   } catch (error) {
     console.error('Get bills error:', error);
     return serverErrorResponse('Failed to fetch bills');

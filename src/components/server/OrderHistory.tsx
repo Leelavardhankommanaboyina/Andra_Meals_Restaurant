@@ -32,7 +32,7 @@ export function OrderHistory() {
   const fetchOrders = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await ordersApi.getAll({ myOrders: true, status: 'completed' });
+      const response = await ordersApi.getAll({ myOrders: true, status: 'completed', page: 1, limit: 100 });
       setOrders(response.data.orders);
     } catch (error) {
       console.error('Error fetching order history:', error);

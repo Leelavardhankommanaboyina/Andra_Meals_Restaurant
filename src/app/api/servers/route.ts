@@ -10,7 +10,7 @@ import {
   forbiddenResponse,
   serverErrorResponse,
 } from '@/lib/api-response';
-import { emitSocketEvent, SOCKET_EVENTS } from '@/lib/socket-emit';
+import { emitSocketEvent, SOCKET_EVENTS, ROOMS } from '@/lib/socket-emit';
 
 // GET /api/servers - Get all servers (Admin only)
 export async function GET(request: NextRequest) {
@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Emit real-time event
-    emitSocketEvent(SOCKET_EVENTS.SERVER_CREATED, serverData);
+    emitSocketEvent(SOCKET_EVENTS.SERVER_CREATED, serverData, ROOMS.ADMIN);
 
     return successResponse(serverData, 'Server added successfully', 201);
   } catch (error) {

@@ -31,54 +31,83 @@ export async function GET(request: NextRequest) {
     const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
     const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
 
-    // Get paid orders for the day
-    const paidOrders = await Order.find({
-      status: 'paid',
-      paidAt: { $gte: startOfDay, $lte: endOfDay },
-    }).lean();
+    const [
+      paidSummary,
+      totalMenuItems,
+      activeMenuItems,
+      totalServers,
+      activeServers,
+      ongoingOrdersCount,
+      completedOrdersCount,
+    ] = await Promise.all([
+      Order.aggregate([
+        {
+          $match: {
+            status: 'paid',
+            paidAt: { $gte: startOfDay, $lte: endOfDay },
+          },
+        },
+        {
+          $facet: {
+            revenue: [
+              {
+                $group: {
+                  _id: null,
+                  totalRevenue: { $sum: '$totalAmount' },
+                  ordersCount: { $sum: 1 },
+                },
+              },
+              {
+                $project: {
+                  _id: 0,
+                  totalRevenue: 1,
+                  ordersCount: 1,
+                },
+              },
+            ],
+            items: [
+              { $unwind: '$items' },
+              {
+                $group: {
+                  _id: '$items.name',
+                  quantity: { $sum: '$items.quantity' },
+                  revenue: { $sum: { $multiply: ['$items.price', '$items.quantity'] } },
+                },
+              },
+              {
+                $project: {
+                  _id: 0,
+                  name: '$_id',
+                  quantity: 1,
+                  revenue: 1,
+                },
+              },
+              { $sort: { quantity: -1 } },
+            ],
+          },
+        },
+      ]),
+      MenuItem.countDocuments(),
+      MenuItem.countDocuments({ isActive: true }),
+      User.countDocuments({ role: 'server' }),
+      User.countDocuments({ role: 'server', isActive: true }),
+      Order.countDocuments({ status: 'ongoing' }),
+      Order.countDocuments({ status: 'completed' }),
+    ]);
 
-    // Calculate total revenue
-    const totalRevenue = paidOrders.reduce((sum, order) => sum + order.totalAmount, 0);
-
-    // Calculate items sold with quantities
-    const itemsSold: Record<string, { name: string; quantity: number; revenue: number }> = {};
-
-    for (const order of paidOrders) {
-      for (const item of order.items) {
-        if (itemsSold[item.name]) {
-          itemsSold[item.name].quantity += item.quantity;
-          itemsSold[item.name].revenue += item.price * item.quantity;
-        } else {
-          itemsSold[item.name] = {
-            name: item.name,
-            quantity: item.quantity,
-            revenue: item.price * item.quantity,
-          };
-        }
-      }
-    }
-
-    // Convert to array and sort by quantity (descending)
-    const itemsSoldArray = Object.values(itemsSold).sort((a, b) => b.quantity - a.quantity);
-
-    // Calculate total items sold
-    const totalItemsSold = itemsSoldArray.reduce((sum, item) => sum + item.quantity, 0);
-
-    // Get counts
-    const totalMenuItems = await MenuItem.countDocuments();
-    const activeMenuItems = await MenuItem.countDocuments({ isActive: true });
-    const totalServers = await User.countDocuments({ role: 'server' });
-    const activeServers = await User.countDocuments({ role: 'server', isActive: true });
-
-    // Get ongoing and completed orders count
-    const ongoingOrdersCount = await Order.countDocuments({ status: 'ongoing' });
-    const completedOrdersCount = await Order.countDocuments({ status: 'completed' });
+    const summaryDoc = paidSummary[0] || { revenue: [], items: [] };
+    const revenueSummary = summaryDoc.revenue?.[0] || { totalRevenue: 0, ordersCount: 0 };
+    const itemsSoldArray = summaryDoc.items || [];
+    const totalItemsSold = itemsSoldArray.reduce(
+      (sum: number, item: { quantity: number }) => sum + item.quantity,
+      0
+    );
 
     return successResponse({
       date: startOfDay.toISOString().split('T')[0],
       revenue: {
-        total: totalRevenue,
-        ordersCount: paidOrders.length,
+        total: revenueSummary.totalRevenue,
+        ordersCount: revenueSummary.ordersCount,
       },
       itemsSold: {
         total: totalItemsSold,
@@ -97,7 +126,7 @@ export async function GET(request: NextRequest) {
       orders: {
         ongoing: ongoingOrdersCount,
         completed: completedOrdersCount,
-        paid: paidOrders.length,
+        paid: revenueSummary.ordersCount,
       },
     });
   } catch (error) {

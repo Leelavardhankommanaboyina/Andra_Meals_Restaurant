@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { Socket } from 'socket.io-client';
-import { initSocket, joinRoom, leaveRoom, getSocket, SOCKET_EVENTS, ROOMS } from '@/lib/socket-client';
+import { disconnectSocket, initSocket, joinRoom, leaveRoom, getSocket, SOCKET_EVENTS, ROOMS } from '@/lib/socket-client';
 import { useAuthStore } from '@/store/auth-store';
 import { useAdminStore, MenuItem, Server, Customer } from '@/store/admin-store';
 import { useOrderStore, Order } from '@/store/order-store';
@@ -64,9 +64,14 @@ export function SocketProvider({ children }: SocketProviderProps) {
 
     const windowState = getWindowState();
 
-    // If no user after hydration, don't create socket (layouts handle redirect)
+    // If no user after hydration, ensure no active socket remains.
     if (!user) {
-      console.log('[Socket Provider] No user, skipping socket setup');
+      console.log('[Socket Provider] No user, disconnecting socket');
+      disconnectSocket();
+      setSocket(null);
+      setIsConnected(false);
+      windowState.setup = false;
+      windowState.listeners = false;
       return;
     }
 
@@ -88,19 +93,9 @@ export function SocketProvider({ children }: SocketProviderProps) {
       return;
     }
 
-    // Get token
-    const authData = localStorage.getItem('auth-storage');
-    let token: string | undefined;
-    try {
-      const parsed = JSON.parse(authData || '{}');
-      token = parsed?.state?.token;
-    } catch {
-      token = undefined;
-    }
-
     // Initialize socket
     console.log('[Socket Provider] Initializing new socket');
-    const socketInstance = initSocket(token);
+    const socketInstance = initSocket();
     setSocket(socketInstance);
     windowState.setup = true;
 
@@ -124,9 +119,23 @@ export function SocketProvider({ children }: SocketProviderProps) {
       setIsConnected(false);
     };
 
+    const onConnectError = (error: Error) => {
+      console.warn('[Socket] Connection error:', error.message);
+      const message = error.message.toLowerCase();
+      if (message.includes('authentication') || message.includes('token')) {
+        useAuthStore.getState().clearAuth();
+        disconnectSocket();
+        setSocket(null);
+        setIsConnected(false);
+        windowState.setup = false;
+        windowState.listeners = false;
+      }
+    };
+
     // Attach connection handlers
     socketInstance.on('connect', onConnect);
     socketInstance.on('disconnect', onDisconnect);
+    socketInstance.on('connect_error', onConnectError);
 
     // If already connected, manually trigger
     if (socketInstance.connected) {
@@ -143,6 +152,7 @@ export function SocketProvider({ children }: SocketProviderProps) {
     return () => {
       socketInstance.off('connect', onConnect);
       socketInstance.off('disconnect', onDisconnect);
+      socketInstance.off('connect_error', onConnectError);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mounted, user?.userId, user?.role]);
@@ -161,7 +171,7 @@ function attachEventListeners(socketInstance: Socket) {
   // =====================
   socketInstance.on(SOCKET_EVENTS.ORDER_CREATED, (order: Customer & Order) => {
     console.log('[Socket] ✅ ORDER_CREATED received:', order._id, order.customerName);
-    toast.info('New order received', { duration: 3000 });
+    toast.info('New order received', { duration: 1000 });
     // Update admin store
     const adminStore = useAdminStore.getState();
     if (order.status === 'ongoing') {
@@ -210,7 +220,7 @@ function attachEventListeners(socketInstance: Socket) {
 
   socketInstance.on(SOCKET_EVENTS.ORDER_PAID, (order: Customer) => {
     console.log('[Socket] ORDER_PAID received:', order._id);
-    toast.success('Payment completed', { duration: 3000 });
+    toast.success('Payment completed', { duration: 1000 });
     const adminStore = useAdminStore.getState();
     adminStore.setCompletedOrders(adminStore.completedOrders.filter(o => o._id !== order._id));
     adminStore.fetchBills();
@@ -251,7 +261,7 @@ function attachEventListeners(socketInstance: Socket) {
   socketInstance.on(SOCKET_EVENTS.MENU_ITEM_CREATED, (item: MenuItem) => {
     const adminStore = useAdminStore.getState();
     adminStore.addMenuItem(item);
-    toast.info('New menu item added', { duration: 2000 });
+    toast.info('New menu item added', { duration: 1000 });
   });
 
   socketInstance.on(SOCKET_EVENTS.MENU_ITEM_UPDATED, (item: MenuItem) => {
@@ -262,7 +272,7 @@ function attachEventListeners(socketInstance: Socket) {
   socketInstance.on(SOCKET_EVENTS.MENU_ITEM_DELETED, (data: { _id: string }) => {
     const adminStore = useAdminStore.getState();
     adminStore.removeMenuItem(data._id);
-    toast.info('Menu item removed', { duration: 2000 });
+    toast.info('Menu item removed', { duration: 1000 });
   });
 
   socketInstance.on(SOCKET_EVENTS.MENU_ITEM_TOGGLED, (item: MenuItem) => {
@@ -276,7 +286,7 @@ function attachEventListeners(socketInstance: Socket) {
   socketInstance.on(SOCKET_EVENTS.SERVER_CREATED, (server: Server) => {
     const adminStore = useAdminStore.getState();
     adminStore.addServer(server);
-    toast.info('New server account created', { duration: 2000 });
+    toast.info('New server account created', { duration: 1000 });
   });
 
   socketInstance.on(SOCKET_EVENTS.SERVER_UPDATED, (server: Server) => {
@@ -287,7 +297,7 @@ function attachEventListeners(socketInstance: Socket) {
   socketInstance.on(SOCKET_EVENTS.SERVER_DELETED, (data: { _id: string }) => {
     const adminStore = useAdminStore.getState();
     adminStore.removeServer(data._id);
-    toast.info('Server account removed', { duration: 2000 });
+    toast.info('Server account removed', { duration: 1000 });
   });
 
   socketInstance.on(SOCKET_EVENTS.SERVER_TOGGLED, (server: Server) => {

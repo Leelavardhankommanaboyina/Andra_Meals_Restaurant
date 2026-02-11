@@ -10,7 +10,7 @@ import {
   forbiddenResponse,
   serverErrorResponse,
 } from '@/lib/api-response';
-import { emitSocketEvent, SOCKET_EVENTS } from '@/lib/socket-emit';
+import { emitSocketEvent, SOCKET_EVENTS, ROOMS } from '@/lib/socket-emit';
 
 // GET /api/menu - Get all menu items
 export async function GET(request: NextRequest) {
@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     const newItem = await MenuItem.create(validationResult.data);
 
     // Emit real-time event
-    emitSocketEvent(SOCKET_EVENTS.MENU_ITEM_CREATED, newItem);
+    emitSocketEvent(SOCKET_EVENTS.MENU_ITEM_CREATED, newItem, [ROOMS.ADMIN, ROOMS.SERVERS]);
 
     return successResponse(newItem, 'Menu item added successfully', 201);
   } catch (error) {

@@ -20,6 +20,7 @@ export default function NewOrderPage() {
   const [step, setStep] = useState<Step>('table');
   const [tableNumber, setTableNumber] = useState<number | null>(null);
   const [customerName, setCustomerName] = useState<string>('');
+  const [groupSize, setGroupSize] = useState<number | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -28,8 +29,9 @@ export default function NewOrderPage() {
     setStep('customer');
   };
 
-  const handleCustomerNext = (name: string) => {
+  const handleCustomerNext = (name: string, peopleInGroup?: number) => {
     setCustomerName(name);
+    setGroupSize(peopleInGroup ?? null);
     setStep('items');
   };
 
@@ -49,6 +51,7 @@ export default function NewOrderPage() {
       await ordersApi.create({
         tableNumber,
         customerName,
+        ...(groupSize ? { groupSize } : {}),
         items,
       });
 
@@ -71,6 +74,7 @@ export default function NewOrderPage() {
         onNext={handleCustomerNext}
         onBack={handleBack}
         initialValue={customerName}
+        initialGroupSize={groupSize}
       />
     );
   }

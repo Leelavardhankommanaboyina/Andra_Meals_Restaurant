@@ -28,6 +28,7 @@ import { toast } from 'sonner';
 import { useAdminStore } from '@/store';
 
 interface OrderItem {
+  _id?: string;
   name: string;
   price: number;
   quantity: number;
@@ -40,6 +41,7 @@ interface Order {
   _id: string;
   tableNumber: number;
   customerName: string;
+  groupSize?: number | null;
   items: OrderItem[];
   status: 'ongoing' | 'completed' | 'paid';
   totalAmount: number;
@@ -218,7 +220,7 @@ export default function CustomersPage() {
     }
   };
 
-  const handleItemDeliveryToggle = async (itemIndex: number, isDelivered: boolean) => {
+  const handleItemDeliveryToggle = async (itemIndex: number, isDelivered: boolean, itemId?: string) => {
     if (!selectedOrder || updatingItems.has(itemIndex)) return;
 
     // OPTIMISTIC UPDATE: Update UI immediately
@@ -246,7 +248,7 @@ export default function CustomersPage() {
 
     // Fire API call in background
     ordersApi.update(selectedOrder._id, {
-      itemDeliveryUpdate: { itemIndex, isDelivered },
+      itemDeliveryUpdate: { itemId, itemIndex, isDelivered },
     }).catch(() => {
       toast.error('Failed to update item status');
       // Revert on error
@@ -445,12 +447,12 @@ export default function CustomersPage() {
                       <tr
                         key={index}
                         className={`border-t cursor-pointer transition-colors ${item.isDelivered ? 'bg-green-50 hover:bg-green-100' : 'hover:bg-green-50'}`}
-                        onClick={() => !updatingItems.has(index) && handleItemDeliveryToggle(index, !item.isDelivered)}
+                        onClick={() => !updatingItems.has(index) && handleItemDeliveryToggle(index, !item.isDelivered, item._id)}
                       >
                         <td className="p-3">
                           <Checkbox
                             checked={item.isDelivered}
-                            onCheckedChange={(checked) => handleItemDeliveryToggle(index, checked as boolean)}
+                            onCheckedChange={(checked) => handleItemDeliveryToggle(index, checked as boolean, item._id)}
                             disabled={updatingItems.has(index)}
                             className="data-[state=checked]:bg-green-500 pointer-events-none"
                           />

@@ -1,5 +1,5 @@
 // Helper function to emit socket events from API routes
-export const emitSocketEvent = (event: string, data: unknown, room?: string): void => {
+export const emitSocketEvent = (event: string, data: unknown, room?: string | string[]): void => {
   const io = global.io;
   
   if (!io) {
@@ -7,14 +7,15 @@ export const emitSocketEvent = (event: string, data: unknown, room?: string): vo
     return;
   }
 
-  // Log connected clients for debugging
-  const connectedSockets = io.sockets.sockets.size;
-  console.log(`Emitting ${event} to ${connectedSockets} connected clients`);
+  // Prevent accidental global broadcasts of sensitive events.
+  if (!room) {
+    console.warn('No room provided - event not emitted:', event);
+    return;
+  }
 
-  if (room) {
-    io.to(room).emit(event, data);
-  } else {
-    io.emit(event, data);
+  const rooms = Array.isArray(room) ? room : [room];
+  for (const targetRoom of rooms) {
+    io.to(targetRoom).emit(event, data);
   }
 };
 

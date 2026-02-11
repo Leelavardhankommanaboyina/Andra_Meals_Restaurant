@@ -9,9 +9,8 @@ export interface User {
 
 interface AuthState {
   user: User | null;
-  token: string | null;
   isAuthenticated: boolean;
-  setAuth: (user: User, token: string) => void;
+  setAuth: (user: User) => void;
   clearAuth: () => void;
 }
 
@@ -19,26 +18,30 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
       user: null,
-      token: null,
       isAuthenticated: false,
-      setAuth: (user, token) =>
+      setAuth: (user) =>
         set({
           user,
-          token,
           isAuthenticated: true,
         }),
       clearAuth: () =>
         set({
           user: null,
-          token: null,
           isAuthenticated: false,
         }),
     }),
     {
       name: 'auth-storage',
+      version: 2,
+      migrate: (persistedState) => {
+        const state = persistedState as { user?: User | null; isAuthenticated?: boolean } | undefined;
+        return {
+          user: state?.user ?? null,
+          isAuthenticated: state?.isAuthenticated ?? false,
+        };
+      },
       partialize: (state) => ({
         user: state.user,
-        token: state.token,
         isAuthenticated: state.isAuthenticated,
       }),
     }
