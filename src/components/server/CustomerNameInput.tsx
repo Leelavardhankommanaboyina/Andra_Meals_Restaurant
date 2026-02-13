@@ -152,23 +152,6 @@ export function CustomerNameInput({
                 {error && (
                   <p className="text-red-500 text-sm">{error}</p>
                 )}
-                {existingNames.length > 0 && (
-                  <div className="mt-4 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                    <p className="text-sm text-amber-800 font-medium mb-2">
-                      Existing customers at this table:
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {existingNames.map((name, index) => (
-                        <span
-                          key={index}
-                          className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-sm capitalize"
-                        >
-                          {name}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="groupSize" className="text-base">
@@ -188,6 +171,23 @@ export function CustomerNameInput({
                   <p className="text-red-500 text-sm">{groupSizeError}</p>
                 )}
               </div>
+              {existingNames.length > 0 && (
+                <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                  <p className="text-sm text-amber-800 font-medium mb-2">
+                    Existing customers at this table:
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {existingNames.map((name, index) => (
+                      <span
+                        key={index}
+                        className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-sm capitalize"
+                      >
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="flex gap-3">
                 <Button
                   type="button"

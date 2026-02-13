@@ -12,7 +12,7 @@ import {
 } from '@/lib/api-response';
 import { emitSocketEvent, SOCKET_EVENTS, ROOMS } from '@/lib/socket-emit';
 
-// GET /api/servers - Get all servers (Admin only)
+// GET /api/servers - Get all staff (servers + servents) (Admin only)
 export async function GET(request: NextRequest) {
   try {
     await dbConnect();
@@ -26,7 +26,13 @@ export async function GET(request: NextRequest) {
       return forbiddenResponse('Only admin can view servers');
     }
 
-    const servers = await User.find({ role: 'server' })
+    const roleParam = request.nextUrl.searchParams.get('role');
+    const roleFilter =
+      roleParam && (roleParam === 'server' || roleParam === 'servent')
+        ? { role: roleParam }
+        : { role: { $in: ['server', 'servent'] } };
+
+    const servers = await User.find(roleFilter)
       .select('-password')
       .sort({ createdAt: -1 })
       .lean();
@@ -41,7 +47,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/servers - Add new server (Admin only)
+// POST /api/servers - Add new staff (Admin only)
 export async function POST(request: NextRequest) {
   try {
     await dbConnect();
@@ -52,7 +58,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isAdmin(user)) {
-      return forbiddenResponse('Only admin can add servers');
+      return forbiddenResponse('Only admin can add staff');
     }
 
     const body = await request.json();
@@ -73,10 +79,7 @@ export async function POST(request: NextRequest) {
       return errorResponse('Username already exists');
     }
 
-    const newServer = await User.create({
-      ...validationResult.data,
-      role: 'server',
-    });
+    const newServer = await User.create(validationResult.data);
 
     const serverData = {
       _id: newServer._id,
@@ -89,7 +92,7 @@ export async function POST(request: NextRequest) {
     // Emit real-time event
     emitSocketEvent(SOCKET_EVENTS.SERVER_CREATED, serverData, ROOMS.ADMIN);
 
-    return successResponse(serverData, 'Server added successfully', 201);
+    return successResponse(serverData, 'Staff added successfully', 201);
   } catch (error) {
     console.error('Add server error:', error);
     return serverErrorResponse('Failed to add server');

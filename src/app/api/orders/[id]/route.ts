@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import dbConnect from '@/lib/db';
 import { MenuItem, Order } from '@/lib/models';
 import { getCurrentUser, isAdmin } from '@/lib/auth';
-import { addItemsToOrderSchema } from '@/lib/validations';
+import { addItemsToOrderSchema, orderAssignmentSchema } from '@/lib/validations';
 import {
   successResponse,
   errorResponse,
@@ -13,6 +13,7 @@ import {
   serverErrorResponse,
 } from '@/lib/api-response';
 import { emitSocketEvent, ROOMS, SOCKET_EVENTS } from '@/lib/socket-emit';
+import { resolveAssignee } from '@/lib/order-assignment';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -88,9 +89,18 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return notFoundResponse('Order not found');
     }
 
-    // Servers can only see their own orders
-    if (user.role === 'server' && order.serverId.toString() !== user.userId) {
-      return forbiddenResponse('You can only view your own orders');
+    if (user.role !== 'admin') {
+      const isCreator = order.serverId.toString() === user.userId;
+      const isAssignee = order.deliveryAssigneeId?.toString() === user.userId;
+      const addedAnyItems = order.items.some((item) => item.addedByServerId?.toString() === user.userId);
+
+      if (user.role === 'servent' && !isAssignee) {
+        return forbiddenResponse('You can only view assigned orders');
+      }
+
+      if (user.role === 'server' && !isCreator && !isAssignee && !addedAnyItems) {
+        return forbiddenResponse('You can only view orders related to you');
+      }
     }
 
     return successResponse(order);
@@ -112,7 +122,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
     const body = await request.json();
-    const { status, items, itemDeliveryUpdate, removeItem } = body;
+    const { status, items, itemDeliveryUpdate, removeItem, assign } = body;
 
     const order = await Order.findById(id);
 
@@ -120,23 +130,67 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return notFoundResponse('Order not found');
     }
 
-    const isOwnOrder = order.serverId.toString() === user.userId;
     const isAdminUser = user.role === 'admin';
+    const isServerUser = user.role === 'server';
+    const isServentUser = user.role === 'servent';
+    const isOrderCreator = order.serverId.toString() === user.userId;
+    const isAssignedToUser = order.deliveryAssigneeId?.toString() === user.userId;
 
-    // For adding items to existing orders (old order workflow):
-    // - Any server can add items to any ongoing order
-    // For other operations (status change, delivery update):
-    // - Servers can only update their own orders
-    // - Admin can update any order
-    if (!isAdminUser && !isOwnOrder) {
-      // Allow only adding items for other servers' orders
-      if (!items || status || itemDeliveryUpdate !== undefined) {
-        return forbiddenResponse('You can only add items to other servers\' orders');
+    if (isServentUser) {
+      if (!isAssignedToUser) {
+        return forbiddenResponse('You can only update assigned orders');
       }
+
+      const onlyDeliveryUpdateAction =
+        itemDeliveryUpdate !== undefined &&
+        !items &&
+        !status &&
+        removeItem === undefined &&
+        assign === undefined;
+
+      if (!onlyDeliveryUpdateAction) {
+        return forbiddenResponse('Servent can only mark delivery status on assigned orders');
+      }
+    }
+
+    if (assign !== undefined) {
+      if (!isAdminUser && !isServerUser) {
+        return forbiddenResponse('Only admin or server can assign orders');
+      }
+
+      if (!isAdminUser && !isOrderCreator && !isAssignedToUser) {
+        return forbiddenResponse('You can only assign orders related to you');
+      }
+
+      if (order.status === 'paid' || order.status === 'cancelled') {
+        return errorResponse('Cannot assign paid or cancelled orders');
+      }
+
+      const assignValidation = orderAssignmentSchema.safeParse(assign);
+      if (!assignValidation.success) {
+        const errors = assignValidation.error.issues.map((issue) => issue.message);
+        return errorResponse(errors.join(', '));
+      }
+
+      const assigneeResult = await resolveAssignee(assignValidation.data);
+      if (!assigneeResult.assignee) {
+        return errorResponse(assigneeResult.error || 'Unable to assign order');
+      }
+
+      order.deliveryAssigneeId = assigneeResult.assignee._id;
+      order.deliveryAssigneeName = assigneeResult.assignee.username;
+      order.deliveryAssigneeRole = assigneeResult.assignee.role;
+      order.assignedById = new mongoose.Types.ObjectId(user.userId);
+      order.assignedByName = user.username;
+      order.assignedAt = new Date();
     }
 
     // Handle removing an item (only undelivered items by the server who added them)
     if (removeItem !== undefined) {
+      if (isServentUser) {
+        return forbiddenResponse('Servent cannot remove items');
+      }
+
       const { itemId, itemIndex } = removeItem as { itemId?: string; itemIndex?: number };
       const resolvedItemIndex = resolveOrderItemIndex(order.items, { itemId, itemIndex });
 
@@ -166,7 +220,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Handle item delivery status update
-    // Servers can only update delivery status for items THEY added
     if (itemDeliveryUpdate !== undefined) {
       const { itemId, itemIndex, isDelivered } = itemDeliveryUpdate as {
         itemId?: string;
@@ -179,17 +232,20 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
 
       const item = order.items[resolvedItemIndex];
-      // Check if this server owns this item (or is admin)
-      if (!isAdminUser && item.addedByServerId?.toString() !== user.userId) {
-        return forbiddenResponse('You can only update delivery status for items you added');
+      const canUpdateDelivery =
+        isAdminUser || isAssignedToUser || item.addedByServerId?.toString() === user.userId;
+      if (!canUpdateDelivery) {
+        return forbiddenResponse('You can only update delivery status for assigned items/orders');
       }
       order.items[resolvedItemIndex].isDelivered = isDelivered;
     }
 
     // Handle adding more items (for old order workflow)
-    // Any server can add items - distributed system allows helping any customer
-    // New items are assigned to the server who added them for delivery tracking
     if (items && Array.isArray(items) && items.length > 0) {
+      if (isServentUser) {
+        return forbiddenResponse('Servent cannot add items');
+      }
+
       if (order.status === 'paid' || order.status === 'cancelled') {
         return errorResponse('Cannot add items to paid or cancelled orders');
       }
@@ -205,27 +261,24 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         return errorResponse(resolvedMenuItems.error);
       }
 
-      console.log('Adding items to order, user:', user.userId, 'username:', user.username);
-      
       // If order was completed, reset to ongoing since new items need delivery
       if (order.status === 'completed') {
         order.status = 'ongoing';
-        console.log('Order reset to ongoing because new items were added');
       }
-      
+
       for (const item of addItemsValidation.data.items) {
         // Check if item already exists AND was added by the same server AND is NOT yet delivered
         // If item is already delivered, treat new addition as separate entry
         const existingItemIndex = order.items.findIndex(
-          (i) => i.menuItem.toString() === item.menuItemId && 
-                 i.addedByServerId?.toString() === user.userId &&
-                 !i.isDelivered  // Only merge with undelivered items
+          (i) =>
+            i.menuItem.toString() === item.menuItemId &&
+            i.addedByServerId?.toString() === user.userId &&
+            !i.isDelivered // Only merge with undelivered items
         );
 
         if (existingItemIndex >= 0) {
           // Update quantity for undelivered item added by same server
           order.items[existingItemIndex].quantity += item.quantity;
-          console.log('Updated existing undelivered item quantity:', item.name);
         } else {
           // Add as new item assigned to current server
           // This includes: items from other servers, OR same server's delivered items
@@ -238,14 +291,27 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
             addedByServerId: new mongoose.Types.ObjectId(user.userId),
             addedByServerName: user.username,
           };
-          console.log('Adding new item:', newItem.name, 'addedByServerId:', newItem.addedByServerId.toString());
           order.items.push(newItem);
         }
+      }
+
+      // Backfill missing assignee for legacy unassigned orders.
+      if (!order.deliveryAssigneeId && user.role !== 'admin') {
+        order.deliveryAssigneeId = new mongoose.Types.ObjectId(user.userId);
+        order.deliveryAssigneeName = user.username;
+        order.deliveryAssigneeRole = 'server';
+        order.assignedById = new mongoose.Types.ObjectId(user.userId);
+        order.assignedByName = user.username;
+        order.assignedAt = new Date();
       }
     }
 
     // Handle explicit status update (from admin)
     if (status) {
+      if (!isAdminUser && !isOrderCreator) {
+        return forbiddenResponse('Only admin or order creator can update order status');
+      }
+
       // Only allow specific status transitions
       if (status === 'completed') {
         // Check if all items are delivered
@@ -267,7 +333,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       } else if (status === 'cancelled') {
         // Servers can cancel their own orders if no items are delivered
         // Admin can cancel any order
-        if (user.role === 'server') {
+        if (isServerUser) {
           const anyDelivered = order.items.some((item) => item.isDelivered);
           if (anyDelivered) {
             return errorResponse('Cannot cancel order with delivered items. Contact admin.');
@@ -291,6 +357,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     await order.save();
 
     // Emit real-time events
+    if (assign !== undefined) {
+      emitSocketEvent(SOCKET_EVENTS.ORDER_ASSIGNED, order, [ROOMS.ADMIN, ROOMS.SERVERS]);
+      emitSocketEvent(SOCKET_EVENTS.ORDER_UPDATED, order, [ROOMS.ADMIN, ROOMS.SERVERS]);
+    }
     if (removeItem !== undefined) {
       emitSocketEvent(SOCKET_EVENTS.ORDER_UPDATED, order, [ROOMS.ADMIN, ROOMS.SERVERS]);
     }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -37,6 +37,8 @@ interface OrderItemsInputProps {
   onDone: (items: OrderItem[]) => void;
   onBack: () => void;
   initialItems?: OrderItem[];
+  isSubmitting?: boolean;
+  categoryButtons?: readonly string[];
 }
 
 export function OrderItemsInput({
@@ -45,14 +47,28 @@ export function OrderItemsInput({
   onDone,
   onBack,
   initialItems = [],
+  isSubmitting = false,
+  categoryButtons,
 }: OrderItemsInputProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [filteredItems, setFilteredItems] = useState<MenuItem[]>([]);
   const [selectedItems, setSelectedItems] = useState<OrderItem[]>(initialItems);
+  const [selectedCategory, setSelectedCategory] = useState('All');
+  const [quantityInputs, setQuantityInputs] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  const categories = useMemo(() => {
+    if (categoryButtons && categoryButtons.length > 0) {
+      return [...categoryButtons];
+    }
+
+    return Array.from(new Set(menuItems.map((item) => item.category))).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [categoryButtons, menuItems]);
 
   // Fetch menu items
   useEffect(() => {
@@ -72,20 +88,36 @@ export function OrderItemsInput({
     fetchMenuItems();
   }, []);
 
-  // Filter items based on search query
+  // Keep quantity input strings in sync with selected items.
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    const nextInputs = Object.fromEntries(
+      selectedItems.map((item) => [item.menuItemId, String(item.quantity)])
+    ) as Record<string, string>;
+    setQuantityInputs(nextInputs);
+  }, [selectedItems]);
+
+  // Filter items based on category + search query
+  useEffect(() => {
+    const scopedItems =
+      selectedCategory === 'All'
+        ? menuItems
+        : menuItems.filter((item) => item.category === selectedCategory);
+
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+    const shouldShowDropdown = normalizedSearch.length > 0 || selectedCategory !== 'All';
+
+    if (!shouldShowDropdown) {
       setFilteredItems([]);
       setShowSuggestions(false);
       return;
     }
 
-    const filtered = menuItems.filter((item) =>
-      item.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const filtered = scopedItems.filter((item) =>
+      item.name.toLowerCase().includes(normalizedSearch)
     );
     setFilteredItems(filtered.slice(0, 8)); // Limit to 8 suggestions
     setShowSuggestions(true);
-  }, [searchQuery, menuItems]);
+  }, [searchQuery, menuItems, selectedCategory]);
 
   // Close suggestions when clicking outside
   useEffect(() => {
@@ -100,6 +132,8 @@ export function OrderItemsInput({
   }, []);
 
   const addItem = useCallback((item: MenuItem) => {
+    if (isSubmitting) return;
+
     setSelectedItems((prev) => {
       const existingIndex = prev.findIndex((i) => i.menuItemId === item._id);
       if (existingIndex >= 0) {
@@ -120,13 +154,16 @@ export function OrderItemsInput({
     setSearchQuery('');
     setShowSuggestions(false);
     toast.success(`Added ${item.name}`);
-  }, []);
+  }, [isSubmitting]);
 
   const removeItem = useCallback((menuItemId: string) => {
+    if (isSubmitting) return;
     setSelectedItems((prev) => prev.filter((i) => i.menuItemId !== menuItemId));
-  }, []);
+  }, [isSubmitting]);
 
   const updateQuantity = useCallback((menuItemId: string, delta: number) => {
+    if (isSubmitting) return;
+
     setSelectedItems((prev) =>
       prev.map((item) => {
         if (item.menuItemId === menuItemId) {
@@ -136,20 +173,72 @@ export function OrderItemsInput({
         return item;
       })
     );
-  }, []);
+  }, [isSubmitting]);
 
   const handleQuantityInput = useCallback((menuItemId: string, value: string) => {
-    const num = parseInt(value);
-    if (!isNaN(num) && num >= 1 && num <= 99) {
-      setSelectedItems((prev) =>
-        prev.map((item) =>
-          item.menuItemId === menuItemId ? { ...item, quantity: num } : item
-        )
-      );
+    if (isSubmitting) return;
+
+    if (!/^\d{0,2}$/.test(value)) {
+      return;
     }
-  }, []);
+
+    setQuantityInputs((prev) => ({ ...prev, [menuItemId]: value }));
+
+    if (value === '') {
+      return;
+    }
+
+    const num = Number(value);
+    if (!Number.isInteger(num) || num < 1 || num > 99) {
+      return;
+    }
+
+    setSelectedItems((prev) =>
+      prev.map((item) => (item.menuItemId === menuItemId ? { ...item, quantity: num } : item))
+    );
+  }, [isSubmitting]);
+
+  const handleQuantityBlur = useCallback(
+    (menuItemId: string) => {
+      if (isSubmitting) return;
+
+      const value = quantityInputs[menuItemId];
+      const currentItem = selectedItems.find((item) => item.menuItemId === menuItemId);
+
+      if (!currentItem) {
+        return;
+      }
+
+      if (!value) {
+        setQuantityInputs((prev) => ({ ...prev, [menuItemId]: String(currentItem.quantity) }));
+        return;
+      }
+
+      const parsed = Number(value);
+      if (!Number.isInteger(parsed) || parsed < 1) {
+        setQuantityInputs((prev) => ({ ...prev, [menuItemId]: String(currentItem.quantity) }));
+        return;
+      }
+
+      const clamped = Math.min(parsed, 99);
+      if (clamped !== currentItem.quantity) {
+        setSelectedItems((prev) =>
+          prev.map((item) =>
+            item.menuItemId === menuItemId ? { ...item, quantity: clamped } : item
+          )
+        );
+      } else {
+        setQuantityInputs((prev) => ({ ...prev, [menuItemId]: String(clamped) }));
+      }
+    },
+    [isSubmitting, quantityInputs, selectedItems]
+  );
 
   const handleDone = () => {
+    if (isSubmitting) {
+      return;
+    }
+
     if (selectedItems.length === 0) {
       toast.error('Please add at least one item');
       return;
@@ -158,6 +247,8 @@ export function OrderItemsInput({
   };
 
   const handleSwipeToRemove = (menuItemId: string, info: PanInfo) => {
+    if (isSubmitting) return;
+
     if (Math.abs(info.offset.x) > 100) {
       removeItem(menuItemId);
       toast.info('Item removed');
@@ -173,7 +264,7 @@ export function OrderItemsInput({
     <div className="flex flex-col h-[calc(100vh-7rem)]">
       {/* Header */}
       <div className="bg-white border-b px-4 py-3 flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={onBack}>
+        <Button variant="ghost" size="icon" onClick={onBack} disabled={isSubmitting}>
           <ChevronLeft className="w-6 h-6" />
         </Button>
         <div>
@@ -194,6 +285,7 @@ export function OrderItemsInput({
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 h-12 text-base"
+            disabled={isSubmitting}
           />
           
           {/* Autocomplete Suggestions */}
@@ -210,6 +302,7 @@ export function OrderItemsInput({
                     key={item._id}
                     className="w-full px-4 py-3 flex items-center justify-between hover:bg-orange-50 border-b last:border-b-0 transition-colors"
                     onClick={() => addItem(item)}
+                    disabled={isSubmitting}
                   >
                     <div className="flex-1 text-left">
                       <p className="font-medium text-gray-800">{item.name}</p>
@@ -229,11 +322,38 @@ export function OrderItemsInput({
             )}
           </AnimatePresence>
 
-          {showSuggestions && searchQuery && filteredItems.length === 0 && (
+          {showSuggestions && filteredItems.length === 0 && !isLoading && (
             <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-50 p-4 text-center text-gray-500">
-              No items found matching &quot;{searchQuery}&quot;
+              {searchQuery
+                ? `No items found matching "${searchQuery}"`
+                : `No items found in ${selectedCategory}`}
             </div>
           )}
+        </div>
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+          <Button
+            type="button"
+            size="sm"
+            variant={selectedCategory === 'All' ? 'default' : 'outline'}
+            className={selectedCategory === 'All' ? 'bg-orange-500 hover:bg-orange-600' : ''}
+            onClick={() => setSelectedCategory('All')}
+            disabled={isSubmitting}
+          >
+            All
+          </Button>
+          {categories.map((category) => (
+            <Button
+              key={category}
+              type="button"
+              size="sm"
+              variant={selectedCategory === category ? 'default' : 'outline'}
+              className={selectedCategory === category ? 'bg-orange-500 hover:bg-orange-600' : ''}
+              onClick={() => setSelectedCategory(category)}
+              disabled={isSubmitting}
+            >
+              {category}
+            </Button>
+          ))}
         </div>
       </div>
 
@@ -247,7 +367,7 @@ export function OrderItemsInput({
           <div className="flex flex-col items-center justify-center h-full text-gray-500 p-4">
             <Search className="w-16 h-16 mb-4 text-gray-300" />
             <p className="text-lg font-medium">No items added yet</p>
-            <p className="text-sm">Search and add items to the order</p>
+            <p className="text-sm">Search by category and add items to the order</p>
           </div>
         ) : (
           <ScrollArea className="h-full">
@@ -282,23 +402,32 @@ export function OrderItemsInput({
                           size="icon"
                           className="h-8 w-8"
                           onClick={() => updateQuantity(item.menuItemId, -1)}
+                          disabled={isSubmitting}
                         >
                           <Minus className="w-4 h-4" />
                         </Button>
                         <Input
                           type="text"
                           inputMode="numeric"
-                          value={item.quantity}
+                          value={quantityInputs[item.menuItemId] ?? String(item.quantity)}
                           onChange={(e) =>
                             handleQuantityInput(item.menuItemId, e.target.value)
                           }
+                          onBlur={() => handleQuantityBlur(item.menuItemId)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              (e.target as HTMLInputElement).blur();
+                            }
+                          }}
                           className="w-12 h-8 text-center p-0"
+                          disabled={isSubmitting}
                         />
                         <Button
                           variant="outline"
                           size="icon"
                           className="h-8 w-8"
                           onClick={() => updateQuantity(item.menuItemId, 1)}
+                          disabled={isSubmitting}
                         >
                           <Plus className="w-4 h-4" />
                         </Button>
@@ -307,6 +436,7 @@ export function OrderItemsInput({
                           size="icon"
                           className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50"
                           onClick={() => removeItem(item.menuItemId)}
+                          disabled={isSubmitting}
                         >
                           <X className="w-4 h-4" />
                         </Button>
@@ -341,15 +471,15 @@ export function OrderItemsInput({
           </div>
         )}
         <div className="flex gap-3">
-          <Button variant="outline" className="flex-1 h-12" onClick={onBack}>
+          <Button variant="outline" className="flex-1 h-12" onClick={onBack} disabled={isSubmitting}>
             Back
           </Button>
           <Button
             className="flex-1 h-12 bg-orange-500 hover:bg-orange-600"
             onClick={handleDone}
-            disabled={selectedItems.length === 0}
+            disabled={selectedItems.length === 0 || isSubmitting}
           >
-            Done
+            {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Done'}
           </Button>
         </div>
       </div>

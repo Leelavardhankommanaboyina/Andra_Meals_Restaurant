@@ -11,6 +11,7 @@ export type OrderStatus = (typeof ORDER_STATUS)[keyof typeof ORDER_STATUS];
 export const USER_ROLES = {
   ADMIN: 'admin',
   SERVER: 'server',
+  SERVENT: 'servent',
 } as const;
 
 export type UserRole = (typeof USER_ROLES)[keyof typeof USER_ROLES];
@@ -51,6 +52,7 @@ export const SOCKET_EVENTS = {
   ORDER_COMPLETED: 'order:completed',
   ORDER_PAID: 'order:paid',
   ORDER_CANCELLED: 'order:cancelled',
+  ORDER_ASSIGNED: 'order:assigned',
 
   // Menu events
   MENU_ITEM_CREATED: 'menu:item-created',
@@ -85,6 +87,15 @@ export const DEFAULT_CATEGORIES = [
   'Rice',
   'Desserts',
   'Beverages',
+] as const;
+
+// Server quick category chips (ordered for fast order-taking)
+export const SERVER_QUICK_CATEGORIES = [
+  'Non Veg Biryanis',
+  'Non Veg Starters',
+  'Non Veg Curries',
+  'Veg Starters',
+  'Drinks',
 ] as const;
 
 // Validation Messages

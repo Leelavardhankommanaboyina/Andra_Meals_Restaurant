@@ -1,10 +1,30 @@
 import mongoose from 'mongoose';
 
-const MONGODB_URI = process.env.MONGODB_URI!;
+function buildMongoUri() {
+  const directUri = process.env.MONGODB_URI?.trim();
+  if (directUri) {
+    return directUri;
+  }
 
-if (!MONGODB_URI) {
-  throw new Error('Please define the MONGODB_URI environment variable inside .env.local');
+  const username = process.env.MONGODB_USERNAME?.trim();
+  const password = process.env.MONGODB_PASSWORD?.trim();
+  const host = process.env.MONGODB_CLUSTER_HOST?.trim();
+
+  if (username && password && host) {
+    const encodedUser = encodeURIComponent(username);
+    const encodedPassword = encodeURIComponent(password);
+    const dbName = process.env.MONGODB_DATABASE?.trim();
+    const appName = process.env.MONGODB_APP_NAME?.trim() || 'Andra-Meals-Cluster';
+    const dbPath = dbName ? `/${dbName}` : '/';
+
+    return `mongodb+srv://${encodedUser}:${encodedPassword}@${host}${dbPath}?retryWrites=true&w=majority&appName=${encodeURIComponent(appName)}`;
+  }
+
+  throw new Error(
+    'Please define MONGODB_URI or set MONGODB_USERNAME, MONGODB_PASSWORD, and MONGODB_CLUSTER_HOST in .env.local'
+  );
 }
+const MONGODB_URI = buildMongoUri();
 
 interface MongooseCache {
   conn: typeof mongoose | null;

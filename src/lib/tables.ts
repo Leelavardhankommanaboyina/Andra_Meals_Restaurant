@@ -4,6 +4,11 @@ const DEFAULT_TABLE_COUNT = parseInt(process.env.NEXT_PUBLIC_MAX_TABLE_NUMBER ||
 const DEFAULT_CHAIRS_TOP = parseInt(process.env.DEFAULT_TABLE_CHAIRS_TOP || '2', 10);
 const DEFAULT_CHAIRS_BOTTOM = parseInt(process.env.DEFAULT_TABLE_CHAIRS_BOTTOM || '2', 10);
 
+declare global {
+  // eslint-disable-next-line no-var
+  var __tablesConfigured: boolean | undefined;
+}
+
 function normalizePositiveInt(value: number, fallback: number): number {
   if (!Number.isInteger(value) || value <= 0) {
     return fallback;
@@ -27,8 +32,13 @@ export function getDefaultTableSettings() {
 }
 
 export async function ensureDefaultTablesConfigured(): Promise<void> {
+  if (global.__tablesConfigured) return;
+
   const existingCount = await Table.countDocuments();
-  if (existingCount > 0) return;
+  if (existingCount > 0) {
+    global.__tablesConfigured = true;
+    return;
+  }
 
   const defaults = getDefaultTableSettings();
   const documents = Array.from({ length: defaults.tableCount }, (_, index) => ({
@@ -45,4 +55,6 @@ export async function ensureDefaultTablesConfigured(): Promise<void> {
       throw error;
     }
   }
+
+  global.__tablesConfigured = true;
 }

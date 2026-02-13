@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Loader2, History, Check } from 'lucide-react';
 import { ordersApi } from '@/lib/api-client';
 import { toast } from 'sonner';
+import { useSocket } from '@/components/providers/socket-provider';
 
 interface OrderItem {
   name: string;
@@ -20,31 +21,53 @@ interface Order {
   tableNumber: number;
   customerName: string;
   items: OrderItem[];
-  status: 'ongoing' | 'completed' | 'paid';
+  status: 'ongoing' | 'completed' | 'paid' | 'cancelled';
   totalAmount: number;
   createdAt: string;
 }
 
 export function OrderHistory() {
+  const { isConnected } = useSocket();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async (silent = false) => {
     try {
-      setIsLoading(true);
-      const response = await ordersApi.getAll({ myOrders: true, status: 'completed', page: 1, limit: 100 });
+      if (!silent) {
+        setIsLoading(true);
+      }
+      const response = await ordersApi.getAll({ myOrders: true, status: 'history', page: 1, limit: 100 });
       setOrders(response.data.orders);
     } catch (error) {
       console.error('Error fetching order history:', error);
       toast.error('Failed to load order history');
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    fetchOrders();
+    fetchOrders(false);
   }, [fetchOrders]);
+
+  useEffect(() => {
+    if (isConnected) {
+      fetchOrders(true);
+    }
+  }, [fetchOrders, isConnected]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isConnected) {
+        fetchOrders(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [fetchOrders, isConnected]);
 
   if (isLoading) {
     return (
@@ -72,7 +95,7 @@ export function OrderHistory() {
       <div className="bg-white border-b px-4 py-3">
         <h1 className="text-xl font-semibold text-gray-800">Order History</h1>
         <p className="text-sm text-gray-500">
-          {orders.length} completed order(s)
+          {orders.length} completed/paid order(s)
         </p>
       </div>
 
@@ -84,9 +107,9 @@ export function OrderHistory() {
               <CardHeader className="pb-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Badge className="bg-green-500">
+                    <Badge className={order.status === 'paid' ? 'bg-blue-500' : 'bg-green-500'}>
                       <Check className="w-3 h-3 mr-1" />
-                      Completed
+                      {order.status === 'paid' ? 'Paid' : 'Completed'}
                     </Badge>
                     <Badge variant="outline">Table {order.tableNumber}</Badge>
                   </div>

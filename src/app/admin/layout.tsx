@@ -7,27 +7,100 @@ import {
   UtensilsCrossed,
   Users,
   UserCircle,
+  ClipboardList,
   Armchair,
   Receipt,
   BarChart3,
   LogOut,
+  Wifi,
+  WifiOff,
+  RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { useAuthStore } from '@/store';
+import { useAuthStore, useAdminStore } from '@/store';
 import { authApi } from '@/lib/api-client';
-import { SocketProvider } from '@/components/providers/socket-provider';
+import { SocketProvider, useSocket } from '@/components/providers/socket-provider';
+import { NotificationBell } from '@/components/common/NotificationBell';
 
 const navItems = [
   { href: '/admin/menu-items', label: 'Menu Items', icon: UtensilsCrossed },
   { href: '/admin/servers', label: 'Servers', icon: Users },
   { href: '/admin/customers', label: 'Customers', icon: UserCircle },
+  { href: '/admin/take-order', label: 'Take Order', icon: ClipboardList },
   { href: '/admin/tables', label: 'Tables', icon: Armchair },
   { href: '/admin/bills-history', label: 'Bills History', icon: Receipt },
   { href: '/admin/metrics', label: 'Business Metrics', icon: BarChart3 },
 ];
+
+function AdminConnectionBadge({
+  pathname,
+  compact = false,
+}: {
+  pathname: string;
+  compact?: boolean;
+}) {
+  const router = useRouter();
+  const { isConnected } = useSocket();
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSyncNow = async () => {
+    if (isSyncing) return;
+
+    setIsSyncing(true);
+    try {
+      const adminStore = useAdminStore.getState();
+
+      if (pathname.startsWith('/admin/customers')) {
+        await adminStore.fetchOrders();
+      } else if (pathname.startsWith('/admin/menu-items')) {
+        await adminStore.fetchMenuItems();
+      } else if (pathname.startsWith('/admin/servers')) {
+        await adminStore.fetchServers();
+      } else if (pathname.startsWith('/admin/bills-history')) {
+        await adminStore.fetchBills();
+      }
+
+      router.refresh();
+      toast.success('Data synced');
+    } catch {
+      toast.error('Failed to sync data');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size={compact ? 'icon' : 'sm'}
+      onClick={handleSyncNow}
+      disabled={isSyncing}
+      className={
+        compact
+          ? `${isConnected ? 'text-green-700 border-green-200 hover:bg-green-50' : 'text-red-700 border-red-200 hover:bg-red-50'}`
+          : `h-8 justify-start gap-2 ${isConnected ? 'text-green-700 border-green-200 hover:bg-green-50' : 'text-red-700 border-red-200 hover:bg-red-50'}`
+      }
+      title={isConnected ? 'Realtime connected. Click to sync now.' : 'Connection lost. Click to retry sync.'}
+    >
+      {isSyncing ? (
+        <RefreshCw className="w-4 h-4 animate-spin" />
+      ) : isConnected ? (
+        <Wifi className="w-4 h-4" />
+      ) : (
+        <WifiOff className="w-4 h-4" />
+      )}
+      {!compact && (
+        <span className="text-xs font-medium">
+          {isConnected ? 'Realtime On' : 'Connection Lost'}
+        </span>
+      )}
+    </Button>
+  );
+}
 
 export default function AdminLayout({
   children,
@@ -136,7 +209,10 @@ export default function AdminLayout({
               </SheetContent>
             </Sheet>
             <span className="font-semibold text-gray-800">Admin Panel</span>
-            <div className="w-10" /> {/* Spacer for alignment */}
+            <div className="flex items-center gap-1">
+              <NotificationBell />
+              <AdminConnectionBadge pathname={pathname} compact />
+            </div>
           </div>
         </header>
 
@@ -150,6 +226,10 @@ export default function AdminLayout({
               <div>
                 <p className="font-semibold text-gray-800">Andra Meals</p>
                 <p className="text-sm text-gray-500">Admin: {user?.username}</p>
+                <div className="mt-2 flex items-center gap-2">
+                  <AdminConnectionBadge pathname={pathname} />
+                  <NotificationBell />
+                </div>
               </div>
             </div>
           </div>

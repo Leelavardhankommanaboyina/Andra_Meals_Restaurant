@@ -4,7 +4,7 @@ import { persist } from 'zustand/middleware';
 export interface User {
   userId: string;
   username: string;
-  role: 'admin' | 'server';
+  role: 'admin' | 'server' | 'servent';
 }
 
 interface AuthState {

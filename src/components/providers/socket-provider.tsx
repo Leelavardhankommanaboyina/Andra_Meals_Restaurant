@@ -6,6 +6,8 @@ import { disconnectSocket, initSocket, joinRoom, leaveRoom, getSocket, SOCKET_EV
 import { useAuthStore } from '@/store/auth-store';
 import { useAdminStore, MenuItem, Server, Customer } from '@/store/admin-store';
 import { useOrderStore, Order } from '@/store/order-store';
+import { useNotificationStore, type NotificationKind } from '@/store/notification-store';
+import { ordersApi } from '@/lib/api-client';
 import { toast } from 'sonner';
 
 interface SocketContextType {
@@ -18,8 +20,8 @@ interface SocketContextType {
 const SocketContext = createContext<SocketContextType>({
   socket: null,
   isConnected: false,
-  joinRoom: () => { },
-  leaveRoom: () => { },
+  joinRoom: () => {},
+  leaveRoom: () => {},
 });
 
 export const useSocket = () => useContext(SocketContext);
@@ -64,9 +66,30 @@ export function SocketProvider({ children }: SocketProviderProps) {
 
     const windowState = getWindowState();
 
+    const syncAfterConnect = async (currentUser: ReturnType<typeof useAuthStore.getState>['user']) => {
+      if (currentUser?.role === 'admin') {
+        // Re-sync orders on (re)connect to recover any events missed while disconnected.
+        await useAdminStore.getState().fetchOrders();
+        return;
+      }
+
+      if (currentUser?.role === 'server' || currentUser?.role === 'servent') {
+        try {
+          const [ongoingRes, historyRes] = await Promise.all([
+            ordersApi.getAll({ myOrders: true, status: 'ongoing', page: 1, limit: 100 }),
+            ordersApi.getAll({ myOrders: true, status: 'history', page: 1, limit: 100 }),
+          ]);
+          const orderStore = useOrderStore.getState();
+          orderStore.setMyOrders(ongoingRes.data.orders as Order[]);
+          orderStore.setOrderHistory(historyRes.data.orders as Order[]);
+        } catch (error) {
+          console.error('Realtime reconnect sync failed:', error);
+        }
+      }
+    };
+
     // If no user after hydration, ensure no active socket remains.
     if (!user) {
-      console.log('[Socket Provider] No user, disconnecting socket');
       disconnectSocket();
       setSocket(null);
       setIsConnected(false);
@@ -78,49 +101,45 @@ export function SocketProvider({ children }: SocketProviderProps) {
     // Check if we already have a valid socket with listeners
     const existingSocket = getSocket();
     if (existingSocket?.connected && windowState.listeners) {
-      // Socket already set up and connected, just sync state
-      console.log('[Socket Provider] Reusing existing connected socket');
       setSocket(existingSocket);
       setIsConnected(true);
+      if (user.role === 'admin') {
+        joinRoom(ROOMS.ADMIN);
+      } else if (user.role === 'server' || user.role === 'servent') {
+        joinRoom(ROOMS.SERVERS);
+      }
+      void syncAfterConnect(user);
       return;
     }
 
     // If already set up but not connected, just wait for reconnection
     if (windowState.setup && windowState.listeners && existingSocket) {
-      console.log('[Socket Provider] Socket exists, waiting for reconnection');
       setSocket(existingSocket);
       setIsConnected(existingSocket.connected);
       return;
     }
 
     // Initialize socket
-    console.log('[Socket Provider] Initializing new socket');
     const socketInstance = initSocket();
     setSocket(socketInstance);
     windowState.setup = true;
 
-    // Connection handlers
     const onConnect = () => {
-      console.log('[Socket] Connected - socket.id:', socketInstance.id);
       setIsConnected(true);
       const currentUser = useAuthStore.getState().user;
-      console.log('[Socket] Current user role:', currentUser?.role);
       if (currentUser?.role === 'admin') {
         joinRoom(ROOMS.ADMIN);
-        console.log('[Socket] Admin joining ADMIN room');
-      } else if (currentUser?.role === 'server') {
+      } else if (currentUser?.role === 'server' || currentUser?.role === 'servent') {
         joinRoom(ROOMS.SERVERS);
-        console.log('[Socket] Server joining SERVERS room');
       }
+      void syncAfterConnect(currentUser);
     };
 
-    const onDisconnect = (reason: string) => {
-      console.log('[Socket] Disconnected:', reason);
+    const onDisconnect = () => {
       setIsConnected(false);
     };
 
     const onConnectError = (error: Error) => {
-      console.warn('[Socket] Connection error:', error.message);
       const message = error.message.toLowerCase();
       if (message.includes('authentication') || message.includes('token')) {
         useAuthStore.getState().clearAuth();
@@ -132,23 +151,19 @@ export function SocketProvider({ children }: SocketProviderProps) {
       }
     };
 
-    // Attach connection handlers
     socketInstance.on('connect', onConnect);
     socketInstance.on('disconnect', onDisconnect);
     socketInstance.on('connect_error', onConnectError);
 
-    // If already connected, manually trigger
     if (socketInstance.connected) {
       onConnect();
     }
 
-    // Attach event listeners only once
     if (!windowState.listeners) {
       attachEventListeners(socketInstance);
       windowState.listeners = true;
     }
 
-    // Cleanup function - DON'T disconnect, just remove connection state handlers
     return () => {
       socketInstance.off('connect', onConnect);
       socketInstance.off('disconnect', onDisconnect);
@@ -164,93 +179,283 @@ export function SocketProvider({ children }: SocketProviderProps) {
   );
 }
 
+function hasUndeliveredItems(order: Order): boolean {
+  return order.items.some((item) => !item.isDelivered);
+}
+
+function isOrderAssignedToUser(order: Order, userId?: string): boolean {
+  if (!userId) return false;
+  return order.deliveryAssigneeId?.toString() === userId;
+}
+
+function hasUserUndeliveredItems(order: Order, userId?: string): boolean {
+  if (!userId) return false;
+  return order.items.some(
+    (item) => item.addedByServerId?.toString() === userId && !item.isDelivered
+  );
+}
+
+function hasUserItems(order: Order, userId?: string): boolean {
+  if (!userId) return false;
+  return order.items.some((item) => item.addedByServerId?.toString() === userId);
+}
+
+function shouldShowInMyOrders(
+  order: Order,
+  currentUser: ReturnType<typeof useAuthStore.getState>['user']
+): boolean {
+  if (!currentUser || currentUser.role === 'admin') {
+    return false;
+  }
+
+  if (!hasUndeliveredItems(order)) {
+    return false;
+  }
+
+  if (isOrderAssignedToUser(order, currentUser.userId)) {
+    return true;
+  }
+
+  // Legacy fallback for historical orders without assignment.
+  if (currentUser.role === 'server' && !order.deliveryAssigneeId) {
+    return hasUserUndeliveredItems(order, currentUser.userId);
+  }
+
+  return false;
+}
+
+function toComparableId(value: unknown): string | undefined {
+  if (value === null || value === undefined) return undefined;
+
+  if (typeof value === 'object' && value !== null && 'toString' in value) {
+    try {
+      return String((value as { toString: () => string }).toString());
+    } catch {
+      return undefined;
+    }
+  }
+
+  return String(value);
+}
+
+function matchesUserId(value: unknown, userId?: string): boolean {
+  if (!userId) return false;
+  const comparable = toComparableId(value);
+  return comparable === userId;
+}
+
+function addRealtimeNotification(params: {
+  userId: string;
+  title: string;
+  message: string;
+  kind?: NotificationKind;
+  orderId?: string;
+}) {
+  useNotificationStore.getState().addNotification({
+    userId: params.userId,
+    title: params.title,
+    message: params.message,
+    kind: params.kind || 'info',
+    orderId: params.orderId,
+  });
+}
+
 // Separate function for event listeners to keep them stable
 function attachEventListeners(socketInstance: Socket) {
   // =====================
   // ORDER EVENTS
   // =====================
   socketInstance.on(SOCKET_EVENTS.ORDER_CREATED, (order: Customer & Order) => {
-    console.log('[Socket] ✅ ORDER_CREATED received:', order._id, order.customerName);
-    toast.info('New order received', { duration: 1000 });
-    // Update admin store
+    const currentUser = useAuthStore.getState().user;
+
+    if (currentUser?.role === 'admin') {
+      toast.info('New order received', { duration: 1000 });
+      addRealtimeNotification({
+        userId: currentUser.userId,
+        title: 'New order added',
+        message: `Table ${order.tableNumber} - ${order.customerName}`,
+        kind: 'info',
+        orderId: order._id,
+      });
+    }
+
     const adminStore = useAdminStore.getState();
     if (order.status === 'ongoing') {
-      adminStore.setOngoingOrders([order as Customer, ...adminStore.ongoingOrders.filter(o => o._id !== order._id)]);
+      adminStore.setOngoingOrders([
+        order as Customer,
+        ...adminStore.ongoingOrders.filter((o) => o._id !== order._id),
+      ]);
     }
-    // Update order store for servers
+
     const orderStore = useOrderStore.getState();
-    orderStore.addToMyOrders(order as Order);
+    if (shouldShowInMyOrders(order as Order, currentUser)) {
+      orderStore.addToMyOrders(order as Order);
+    } else {
+      orderStore.removeFromMyOrders(order._id);
+    }
   });
 
   socketInstance.on(SOCKET_EVENTS.ORDER_UPDATED, (order: Customer & Order) => {
-    console.log('[Socket] ✅ ORDER_UPDATED received:', order._id, 'status:', order.status);
+    const currentUser = useAuthStore.getState().user;
     const adminStore = useAdminStore.getState();
-    console.log('[Socket] Current ongoing orders:', adminStore.ongoingOrders.length, 'completed:', adminStore.completedOrders.length);
+
     if (order.status === 'ongoing') {
-      const newOngoing = adminStore.ongoingOrders.map(o => o._id === order._id ? order as Customer : o);
-      // If order wasn't in ongoing, add it (might have been reset from completed)
-      if (!newOngoing.find(o => o._id === order._id)) {
+      const newOngoing = adminStore.ongoingOrders.map((o) =>
+        o._id === order._id ? (order as Customer) : o
+      );
+      if (!newOngoing.find((o) => o._id === order._id)) {
         newOngoing.unshift(order as Customer);
       }
       adminStore.setOngoingOrders(newOngoing);
-      // Remove from completed if it was there
-      adminStore.setCompletedOrders(adminStore.completedOrders.filter(o => o._id !== order._id));
+      adminStore.setCompletedOrders(adminStore.completedOrders.filter((o) => o._id !== order._id));
     } else if (order.status === 'completed') {
-      adminStore.setOngoingOrders(adminStore.ongoingOrders.filter(o => o._id !== order._id));
-      adminStore.setCompletedOrders([order as Customer, ...adminStore.completedOrders.filter(o => o._id !== order._id)]);
+      adminStore.setOngoingOrders(adminStore.ongoingOrders.filter((o) => o._id !== order._id));
+      adminStore.setCompletedOrders([
+        order as Customer,
+        ...adminStore.completedOrders.filter((o) => o._id !== order._id),
+      ]);
+    } else if (order.status === 'paid' || order.status === 'cancelled') {
+      adminStore.setOngoingOrders(adminStore.ongoingOrders.filter((o) => o._id !== order._id));
+      adminStore.setCompletedOrders(adminStore.completedOrders.filter((o) => o._id !== order._id));
     }
-    // Update order store - add or update based on whether it exists
+
     const orderStore = useOrderStore.getState();
-    const existingOrder = orderStore.myOrders.find(o => o._id === order._id);
-    if (existingOrder) {
-      orderStore.updateOrderInMyOrders(order._id, order as Order);
-    } else if (order.status === 'ongoing') {
+    if (shouldShowInMyOrders(order as Order, currentUser)) {
+      const existingOrder = orderStore.myOrders.find((o) => o._id === order._id);
+      if (existingOrder) {
+        orderStore.updateOrderInMyOrders(order._id, order as Order);
+      } else {
+        orderStore.addToMyOrders(order as Order);
+      }
+    } else {
+      orderStore.removeFromMyOrders(order._id);
+    }
+  });
+
+  socketInstance.on(SOCKET_EVENTS.ORDER_ASSIGNED, (order: Customer & Order) => {
+    const currentUser = useAuthStore.getState().user;
+    const adminStore = useAdminStore.getState();
+
+    if (order.status === 'ongoing') {
+      const updatedOngoing = adminStore.ongoingOrders.map((o) =>
+        o._id === order._id ? (order as Customer) : o
+      );
+      if (!updatedOngoing.find((o) => o._id === order._id)) {
+        updatedOngoing.unshift(order as Customer);
+      }
+      adminStore.setOngoingOrders(updatedOngoing);
+    }
+
+    if (currentUser?.userId && matchesUserId(order.deliveryAssigneeId, currentUser.userId)) {
+      // If you assign an order to yourself (common when a server creates an order),
+      // don't show the "assigned" notification to the same person.
+      const isSelfAssignment =
+        matchesUserId(order.assignedById, currentUser.userId) ||
+        (!order.assignedById && matchesUserId(order.serverId, currentUser.userId));
+
+      if (!isSelfAssignment) {
+        toast.success(`Order assigned: Table ${order.tableNumber} (${order.customerName})`, {
+          duration: 1500,
+        });
+        addRealtimeNotification({
+          userId: currentUser.userId,
+          title: 'New order assigned',
+          message: `Table ${order.tableNumber} - ${order.customerName}`,
+          kind: 'info',
+          orderId: order._id,
+        });
+      }
+    }
+
+    const orderStore = useOrderStore.getState();
+    if (shouldShowInMyOrders(order as Order, currentUser)) {
       orderStore.addToMyOrders(order as Order);
+    } else {
+      orderStore.removeFromMyOrders(order._id);
     }
   });
 
   socketInstance.on(SOCKET_EVENTS.ORDER_COMPLETED, (order: Customer & Order) => {
-    console.log('[Socket] ORDER_COMPLETED received:', order._id);
     const adminStore = useAdminStore.getState();
-    adminStore.setOngoingOrders(adminStore.ongoingOrders.filter(o => o._id !== order._id));
-    adminStore.setCompletedOrders([order, ...adminStore.completedOrders.filter(o => o._id !== order._id)]);
+    adminStore.setOngoingOrders(adminStore.ongoingOrders.filter((o) => o._id !== order._id));
+    adminStore.setCompletedOrders([
+      order,
+      ...adminStore.completedOrders.filter((o) => o._id !== order._id),
+    ]);
     const orderStore = useOrderStore.getState();
     orderStore.removeFromMyOrders(order._id);
   });
 
   socketInstance.on(SOCKET_EVENTS.ORDER_PAID, (order: Customer) => {
-    console.log('[Socket] ORDER_PAID received:', order._id);
-    toast.success('Payment completed', { duration: 1000 });
+    const currentUser = useAuthStore.getState().user;
+    if (currentUser?.role === 'admin') {
+      toast.success('Payment completed', { duration: 1000 });
+    }
     const adminStore = useAdminStore.getState();
-    adminStore.setCompletedOrders(adminStore.completedOrders.filter(o => o._id !== order._id));
+    adminStore.setCompletedOrders(adminStore.completedOrders.filter((o) => o._id !== order._id));
     adminStore.fetchBills();
+    const orderStore = useOrderStore.getState();
+    orderStore.removeFromMyOrders(order._id);
   });
 
   socketInstance.on(SOCKET_EVENTS.ORDER_ITEM_DELIVERED, (order: Customer & Order) => {
-    console.log('[Socket] ✅ ORDER_ITEM_DELIVERED received:', order._id, 'status:', order.status);
+    const currentUser = useAuthStore.getState().user;
     const adminStore = useAdminStore.getState();
-    console.log('[Socket] Current ongoing orders:', adminStore.ongoingOrders.length, 'completed:', adminStore.completedOrders.length);
 
-    // Check if order status changed to completed - move to completed list
-    if (order.status === 'completed') {
-      // Remove from ongoing, add to completed
-      adminStore.setOngoingOrders(adminStore.ongoingOrders.filter(o => o._id !== order._id));
-      adminStore.setCompletedOrders([order as Customer, ...adminStore.completedOrders.filter(o => o._id !== order._id)]);
-      console.log('[Socket] Moved order to completed list');
-    } else {
-      // Just update the order in place in ongoing list
-      adminStore.setOngoingOrders(adminStore.ongoingOrders.map(o => o._id === order._id ? order as Customer : o));
+    if (currentUser?.role === 'admin' && order.status === 'completed') {
+      toast.success(`Order delivered: Table ${order.tableNumber} (${order.customerName})`, {
+        duration: 1500,
+      });
+      addRealtimeNotification({
+        userId: currentUser.userId,
+        title: 'Order delivered',
+        message: `Table ${order.tableNumber} - ${order.customerName} is fully delivered`,
+        kind: 'success',
+        orderId: order._id,
+      });
     }
-    console.log('[Socket] Updated admin store with delivered item');
+
+    if (order.status === 'completed') {
+      adminStore.setOngoingOrders(adminStore.ongoingOrders.filter((o) => o._id !== order._id));
+      adminStore.setCompletedOrders([
+        order as Customer,
+        ...adminStore.completedOrders.filter((o) => o._id !== order._id),
+      ]);
+    } else {
+      adminStore.setOngoingOrders(
+        adminStore.ongoingOrders.map((o) => (o._id === order._id ? (order as Customer) : o))
+      );
+    }
+
     const orderStore = useOrderStore.getState();
-    orderStore.updateOrderInMyOrders(order._id, order as Order);
+    const existingMyOrder = orderStore.myOrders.find((o) => o._id === order._id);
+    const shouldKeepVisibleUntilDone =
+      Boolean(
+        currentUser &&
+          currentUser.role !== 'admin' &&
+          existingMyOrder &&
+          (isOrderAssignedToUser(order as Order, currentUser.userId) ||
+            (currentUser.role === 'server' && hasUserItems(order as Order, currentUser.userId)))
+      ) &&
+      !hasUndeliveredItems(order as Order);
+
+    if (shouldShowInMyOrders(order as Order, currentUser)) {
+      if (existingMyOrder) {
+        orderStore.updateOrderInMyOrders(order._id, order as Order);
+      } else {
+        orderStore.addToMyOrders(order as Order);
+      }
+    } else if (shouldKeepVisibleUntilDone) {
+      orderStore.updateOrderInMyOrders(order._id, order as Order);
+    } else {
+      orderStore.removeFromMyOrders(order._id);
+    }
   });
 
   socketInstance.on(SOCKET_EVENTS.ORDER_DELETED, (data: { _id: string }) => {
-    console.log('[Socket] ORDER_DELETED received:', data._id);
     const adminStore = useAdminStore.getState();
-    adminStore.setOngoingOrders(adminStore.ongoingOrders.filter(o => o._id !== data._id));
-    adminStore.setCompletedOrders(adminStore.completedOrders.filter(o => o._id !== data._id));
+    adminStore.setOngoingOrders(adminStore.ongoingOrders.filter((o) => o._id !== data._id));
+    adminStore.setCompletedOrders(adminStore.completedOrders.filter((o) => o._id !== data._id));
     const orderStore = useOrderStore.getState();
     orderStore.removeFromMyOrders(data._id);
   });
@@ -286,7 +491,7 @@ function attachEventListeners(socketInstance: Socket) {
   socketInstance.on(SOCKET_EVENTS.SERVER_CREATED, (server: Server) => {
     const adminStore = useAdminStore.getState();
     adminStore.addServer(server);
-    toast.info('New server account created', { duration: 1000 });
+    toast.info('New staff account created', { duration: 1000 });
   });
 
   socketInstance.on(SOCKET_EVENTS.SERVER_UPDATED, (server: Server) => {
@@ -297,7 +502,7 @@ function attachEventListeners(socketInstance: Socket) {
   socketInstance.on(SOCKET_EVENTS.SERVER_DELETED, (data: { _id: string }) => {
     const adminStore = useAdminStore.getState();
     adminStore.removeServer(data._id);
-    toast.info('Server account removed', { duration: 1000 });
+    toast.info('Staff account removed', { duration: 1000 });
   });
 
   socketInstance.on(SOCKET_EVENTS.SERVER_TOGGLED, (server: Server) => {

@@ -18,9 +18,15 @@ export interface Order {
   customerName: string;
   groupSize?: number | null;
   items: OrderItem[];
-  status: 'ongoing' | 'completed' | 'paid';
+  status: 'ongoing' | 'completed' | 'paid' | 'cancelled';
   serverId?: string;
   serverName?: string;
+  deliveryAssigneeId?: string;
+  deliveryAssigneeName?: string;
+  deliveryAssigneeRole?: 'server' | 'servent';
+  assignedById?: string;
+  assignedByName?: string;
+  assignedAt?: string;
   totalAmount: number;
   createdAt: string;
   updatedAt?: string;

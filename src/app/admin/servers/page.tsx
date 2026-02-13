@@ -31,6 +31,7 @@ import { useAdminStore } from '@/store';
 interface Server {
   _id: string;
   username: string;
+  role: 'server' | 'servent';
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -39,7 +40,11 @@ interface Server {
 interface FormData {
   username: string;
   password: string;
+  role: 'server' | 'servent';
 }
+
+const getRoleLabel = (role: 'server' | 'servent') =>
+  role === 'server' ? 'Supervisor' : 'Servant';
 
 export default function ServersPage() {
   const { servers, setServers, addServer, updateServer, removeServer } = useAdminStore();
@@ -47,7 +52,7 @@ export default function ServersPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedServer, setSelectedServer] = useState<Server | null>(null);
-  const [formData, setFormData] = useState<FormData>({ username: '', password: '' });
+  const [formData, setFormData] = useState<FormData>({ username: '', password: '', role: 'server' });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchServers = useCallback(async () => {
@@ -83,9 +88,9 @@ export default function ServersPage() {
       const response = await serversApi.create(formData);
       const data = response as { data: Server };
       addServer(data.data);
-      toast.success('Server added successfully');
+      toast.success('Staff added successfully');
       setShowAddDialog(false);
-      setFormData({ username: '', password: '' });
+      setFormData({ username: '', password: '', role: 'server' });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to add server');
     } finally {
@@ -99,6 +104,9 @@ export default function ServersPage() {
     const updateData: Partial<FormData & { isActive: boolean }> = {};
     if (formData.username !== selectedServer.username) {
       updateData.username = formData.username;
+    }
+    if (formData.role !== selectedServer.role) {
+      updateData.role = formData.role;
     }
     if (formData.password) {
       if (formData.password.length < 6) {
@@ -116,8 +124,8 @@ export default function ServersPage() {
     setIsSubmitting(true);
     try {
       await serversApi.update(selectedServer._id, updateData);
-      updateServer(selectedServer._id, { username: formData.username });
-      toast.success('Server updated successfully');
+      updateServer(selectedServer._id, { username: formData.username, role: formData.role });
+      toast.success('Staff updated successfully');
       setShowEditDialog(false);
       setSelectedServer(null);
     } catch (error) {
@@ -131,21 +139,21 @@ export default function ServersPage() {
     try {
       await serversApi.update(server._id, { isActive: !server.isActive });
       updateServer(server._id, { isActive: !server.isActive });
-      toast.success(`Server ${server.isActive ? 'deactivated' : 'activated'}`);
+      toast.success(`Staff ${server.isActive ? 'deactivated' : 'activated'}`);
     } catch {
-      toast.error('Failed to update server status');
+      toast.error('Failed to update staff status');
     }
   };
 
   const handleDeleteServer = async (server: Server) => {
-    if (!confirm(`Are you sure you want to delete server "${server.username}"?`)) return;
+    if (!confirm(`Are you sure you want to delete ${getRoleLabel(server.role)} "${server.username}"?`)) return;
 
     try {
       await serversApi.delete(server._id);
       removeServer(server._id);
-      toast.success('Server deleted');
+      toast.success('Staff deleted');
     } catch {
-      toast.error('Failed to delete server');
+      toast.error('Failed to delete staff');
     }
   };
 
@@ -154,6 +162,7 @@ export default function ServersPage() {
     setFormData({
       username: server.username,
       password: '',
+      role: server.role,
     });
     setShowEditDialog(true);
   };
@@ -172,9 +181,9 @@ export default function ServersPage() {
       <div className="bg-white border-b px-4 py-4 lg:px-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-800">Servers</h1>
+            <h1 className="text-2xl font-bold text-gray-800">Staff</h1>
             <p className="text-gray-500">
-              Total: {servers.length} | Active: {servers.filter(s => s.isActive).length}
+              Total: {servers.length} | Active: {servers.filter(s => s.isActive).length} | Supervisors: {servers.filter(s => s.role === 'server').length} | Servants: {servers.filter(s => s.role === 'servent').length}
             </p>
           </div>
           <Button
@@ -182,7 +191,7 @@ export default function ServersPage() {
             className="bg-orange-500 hover:bg-orange-600"
           >
             <Plus className="w-4 h-4 mr-2" />
-            Add Server
+            Add Staff
           </Button>
         </div>
       </div>
@@ -194,11 +203,11 @@ export default function ServersPage() {
             <Card className="text-center py-12">
               <CardContent>
                 <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                <h2 className="text-xl font-semibold text-gray-800 mb-2">No Servers</h2>
-                <p className="text-gray-500 mb-4">Add servers to manage orders</p>
+                <h2 className="text-xl font-semibold text-gray-800 mb-2">No Staff</h2>
+                <p className="text-gray-500 mb-4">Add staff accounts to manage orders</p>
                 <Button onClick={() => setShowAddDialog(true)}>
                   <Plus className="w-4 h-4 mr-2" />
-                  Add First Server
+                  Add First Staff
                 </Button>
               </CardContent>
             </Card>
@@ -218,12 +227,17 @@ export default function ServersPage() {
                         </div>
                         <div>
                           <CardTitle className="text-lg">{server.username}</CardTitle>
-                          <Badge
-                            variant={server.isActive ? 'default' : 'secondary'}
-                            className={server.isActive ? 'bg-green-500' : ''}
-                          >
-                            {server.isActive ? 'Active' : 'Inactive'}
-                          </Badge>
+                          <div className="flex gap-2 mt-1">
+                            <Badge
+                              variant={server.isActive ? 'default' : 'secondary'}
+                              className={server.isActive ? 'bg-green-500' : ''}
+                            >
+                              {server.isActive ? 'Active' : 'Inactive'}
+                            </Badge>
+                            <Badge variant="outline">
+                              {getRoleLabel(server.role)}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -273,7 +287,7 @@ export default function ServersPage() {
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add New Server</DialogTitle>
+            <DialogTitle>Add New Staff</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -293,6 +307,17 @@ export default function ServersPage() {
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               />
             </div>
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <select
+                value={formData.role}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value as 'server' | 'servent' })}
+                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="server">Supervisor</option>
+                <option value="servent">Servant</option>
+              </select>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>
@@ -306,7 +331,7 @@ export default function ServersPage() {
               {isSubmitting ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                'Add Server'
+                'Add Staff'
               )}
             </Button>
           </DialogFooter>
@@ -317,7 +342,7 @@ export default function ServersPage() {
       <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Server</DialogTitle>
+            <DialogTitle>Edit Staff</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -336,6 +361,17 @@ export default function ServersPage() {
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <select
+                value={formData.role}
+                onChange={(e) => setFormData({ ...formData, role: e.target.value as 'server' | 'servent' })}
+                className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+              >
+                <option value="server">Supervisor</option>
+                <option value="servent">Servant</option>
+              </select>
             </div>
           </div>
           <DialogFooter>

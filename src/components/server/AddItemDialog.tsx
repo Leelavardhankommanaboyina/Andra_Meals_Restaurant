@@ -19,6 +19,7 @@ import {
     Loader2
 } from 'lucide-react';
 import { menuApi, ordersApi } from '@/lib/api-client';
+import { SERVER_QUICK_CATEGORIES } from '@/lib/constants';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -57,10 +58,14 @@ export function AddItemDialog({
     const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
     const [filteredItems, setFilteredItems] = useState<MenuItem[]>([]);
     const [selectedItems, setSelectedItems] = useState<OrderItem[]>([]);
+    const [selectedCategory, setSelectedCategory] = useState('All');
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const searchRef = useRef<HTMLDivElement>(null);
+    const submitLockRef = useRef(false);
+
+    const categories = SERVER_QUICK_CATEGORIES;
 
     // Fetch menu items when dialog opens
     useEffect(() => {
@@ -87,24 +92,33 @@ export function AddItemDialog({
         if (!open) {
             setSearchQuery('');
             setSelectedItems([]);
+            setSelectedCategory('All');
             setShowSuggestions(false);
         }
     }, [open]);
 
-    // Filter items based on search query
+    // Filter items based on category + search query
     useEffect(() => {
-        if (!searchQuery.trim()) {
+        const scopedItems =
+            selectedCategory === 'All'
+                ? menuItems
+                : menuItems.filter((item) => item.category === selectedCategory);
+
+        const normalizedSearch = searchQuery.trim().toLowerCase();
+        const shouldShowDropdown = normalizedSearch.length > 0 || selectedCategory !== 'All';
+
+        if (!shouldShowDropdown) {
             setFilteredItems([]);
             setShowSuggestions(false);
             return;
         }
 
-        const filtered = menuItems.filter((item) =>
-            item.name.toLowerCase().includes(searchQuery.toLowerCase())
+        const filtered = scopedItems.filter((item) =>
+            item.name.toLowerCase().includes(normalizedSearch)
         );
         setFilteredItems(filtered.slice(0, 6)); // Limit to 6 suggestions for dialog
         setShowSuggestions(true);
-    }, [searchQuery, menuItems]);
+    }, [searchQuery, menuItems, selectedCategory]);
 
     // Close suggestions when clicking outside
     useEffect(() => {
@@ -161,7 +175,11 @@ export function AddItemDialog({
             toast.error('Please add at least one item');
             return;
         }
+        if (submitLockRef.current) {
+            return;
+        }
 
+        submitLockRef.current = true;
         setIsSubmitting(true);
         try {
             await ordersApi.update(orderId, { items: selectedItems });
@@ -171,6 +189,7 @@ export function AddItemDialog({
         } catch (error) {
             toast.error(error instanceof Error ? error.message : 'Failed to add items');
         } finally {
+            submitLockRef.current = false;
             setIsSubmitting(false);
         }
     };
@@ -234,11 +253,36 @@ export function AddItemDialog({
                         )}
                     </AnimatePresence>
 
-                    {showSuggestions && searchQuery && filteredItems.length === 0 && !isLoading && (
+                    {showSuggestions && filteredItems.length === 0 && !isLoading && (
                         <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg z-50 p-4 text-center text-gray-500">
-                            No items found matching &quot;{searchQuery}&quot;
+                            {searchQuery
+                                ? `No items found matching "${searchQuery}"`
+                                : `No items found in ${selectedCategory}`}
                         </div>
                     )}
+                </div>
+                <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                    <Button
+                        type="button"
+                        size="sm"
+                        variant={selectedCategory === 'All' ? 'default' : 'outline'}
+                        className={selectedCategory === 'All' ? 'bg-orange-500 hover:bg-orange-600' : ''}
+                        onClick={() => setSelectedCategory('All')}
+                    >
+                        All
+                    </Button>
+                    {categories.map((category) => (
+                        <Button
+                            key={category}
+                            type="button"
+                            size="sm"
+                            variant={selectedCategory === category ? 'default' : 'outline'}
+                            className={selectedCategory === category ? 'bg-orange-500 hover:bg-orange-600' : ''}
+                            onClick={() => setSelectedCategory(category)}
+                        >
+                            {category}
+                        </Button>
+                    ))}
                 </div>
 
                 {/* Selected Items */}

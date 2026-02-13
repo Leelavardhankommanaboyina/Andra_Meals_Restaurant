@@ -19,6 +19,7 @@ const SOCKET_EVENTS = {
   ORDER_ITEM_DELIVERED: 'order:item-delivered',
   ORDER_COMPLETED: 'order:completed',
   ORDER_PAID: 'order:paid',
+  ORDER_ASSIGNED: 'order:assigned',
   ORDER_CANCELLED: 'order:cancelled',
   MENU_ITEM_CREATED: 'menu:item-created',
   MENU_ITEM_UPDATED: 'menu:item-updated',

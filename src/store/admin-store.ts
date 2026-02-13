@@ -14,6 +14,7 @@ export interface MenuItem {
 export interface Server {
   _id: string;
   username: string;
+  role: 'server' | 'servent';
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -24,7 +25,7 @@ export interface Customer {
   tableNumber: number;
   customerName: string;
   groupSize?: number | null;
-  status: 'ongoing' | 'completed' | 'paid';
+  status: 'ongoing' | 'completed' | 'paid' | 'cancelled';
   items: Array<{
     _id?: string;
     name: string;
@@ -36,6 +37,12 @@ export interface Customer {
   }>;
   totalAmount: number;
   serverName: string;
+  deliveryAssigneeId?: string;
+  deliveryAssigneeName?: string;
+  deliveryAssigneeRole?: 'server' | 'servent';
+  assignedById?: string;
+  assignedByName?: string;
+  assignedAt?: string;
   createdAt: string;
 }
 
@@ -93,7 +100,7 @@ interface AdminState {
   // Order/Customer actions
   setOngoingOrders: (orders: Customer[]) => void;
   setCompletedOrders: (orders: Customer[]) => void;
-  updateOrderStatus: (orderId: string, status: 'ongoing' | 'completed' | 'paid') => void;
+  updateOrderStatus: (orderId: string, status: 'ongoing' | 'completed' | 'paid' | 'cancelled') => void;
   
   // Bill actions
   setBills: (bills: Bill[]) => void;
@@ -257,8 +264,9 @@ export const useAdminStore = create<AdminState>((set, get) => ({
           };
         }
       }
-      if (status === 'paid') {
+      if (status === 'paid' || status === 'cancelled') {
         return {
+          ongoingOrders: state.ongoingOrders.filter((o) => o._id !== orderId),
           completedOrders: state.completedOrders.filter((o) => o._id !== orderId),
         };
       }

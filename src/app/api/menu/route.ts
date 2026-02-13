@@ -15,12 +15,12 @@ import { emitSocketEvent, SOCKET_EVENTS, ROOMS } from '@/lib/socket-emit';
 // GET /api/menu - Get all menu items
 export async function GET(request: NextRequest) {
   try {
-    await dbConnect();
-
     const user = await getCurrentUser(request);
     if (!user) {
       return unauthorizedResponse();
     }
+
+    await dbConnect();
 
     const searchParams = request.nextUrl.searchParams;
     const category = searchParams.get('category');
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
     const query: any = {};
     
     // Servers can only see active items
-    if (user.role === 'server' || activeOnly) {
+    if (user.role === 'server' || user.role === 'servent' || activeOnly) {
       query.isActive = true;
     }
 
@@ -45,11 +45,14 @@ export async function GET(request: NextRequest) {
     }
 
     const items = await MenuItem.find(query)
+      .select('_id name price category isActive createdAt updatedAt')
       .sort({ category: 1, name: 1 })
       .lean();
 
-    // Get unique categories
-    const categories = await MenuItem.distinct('category');
+    // Derive categories from the returned items (avoid an extra DB round trip).
+    const categories = Array.from(new Set(items.map((item) => item.category))).sort((a, b) =>
+      a.localeCompare(b)
+    );
 
     return successResponse({
       items,
@@ -65,12 +68,12 @@ export async function GET(request: NextRequest) {
 // POST /api/menu - Add new menu item (Admin only)
 export async function POST(request: NextRequest) {
   try {
-    await dbConnect();
-
     const user = await getCurrentUser(request);
     if (!user) {
       return unauthorizedResponse();
     }
+
+    await dbConnect();
 
     if (!isAdmin(user)) {
       return forbiddenResponse('Only admin can add menu items');

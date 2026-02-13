@@ -20,9 +20,15 @@ import { useOrderStore, Order } from '@/store/order-store';
 import { toast } from 'sonner';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { AddItemDialog } from './AddItemDialog';
+import { useSocket } from '@/components/providers/socket-provider';
 
-export function MyOrders() {
+interface MyOrdersProps {
+  mode?: 'server' | 'servant';
+}
+
+export function MyOrders({ mode = 'server' }: MyOrdersProps) {
   const { user } = useAuthStore();
+  const { isConnected } = useSocket();
   // Use store for real-time updates from socket-provider
   const { myOrders, setMyOrders, updateOrderInMyOrders, removeFromMyOrders } = useOrderStore();
   const [isLoading, setIsLoading] = useState(true);
@@ -33,21 +39,34 @@ export function MyOrders() {
   const [initialDeliveredItems, setInitialDeliveredItems] = useState<Set<string>>(new Set());
   // Track items delivered during this session (to show with strikethrough)
   const [sessionDeliveredItems, setSessionDeliveredItems] = useState<Set<string>>(new Set());
+  const [assigningOrderId, setAssigningOrderId] = useState<string | null>(null);
+
+  const isServentView = mode === 'servant' || user?.role === 'servent';
 
   // Fetch orders only on initial load
-  const fetchOrders = useCallback(async () => {
+  const fetchOrders = useCallback(async (silent = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) {
+        setIsLoading(true);
+      }
       const response = await ordersApi.getAll({ myOrders: true, status: 'ongoing', page: 1, limit: 100 });
       const orders = response.data.orders;
       setMyOrders(orders);
 
-      // Track which items were already delivered when loaded
-      // These will be hidden, not shown in the list
+      // Track which items were already delivered when loaded.
+      // These items are hidden unless delivered in the current session.
       const preDeliveredSet = new Set<string>();
       orders.forEach((order: Order) => {
+        const isAssignedToCurrentUser =
+          order.deliveryAssigneeId?.toString() === user?.userId?.toString();
         order.items.forEach((item, index) => {
-          if (item.isDelivered && item.addedByServerId?.toString() === user?.userId?.toString()) {
+          const deliveredByDefault =
+            isServentView || isAssignedToCurrentUser
+              ? item.isDelivered
+              : item.isDelivered &&
+                item.addedByServerId?.toString() === user?.userId?.toString();
+
+          if (deliveredByDefault) {
             preDeliveredSet.add(`${order._id}-${index}`);
           }
         });
@@ -57,14 +76,33 @@ export function MyOrders() {
       console.error('Error fetching orders:', error);
       toast.error('Failed to load orders');
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
     }
-  }, [setMyOrders, user?.userId]);
+  }, [isServentView, setMyOrders, user?.userId]);
 
   // Initial fetch only
   useEffect(() => {
-    fetchOrders();
+    fetchOrders(false);
   }, [fetchOrders]);
+
+  useEffect(() => {
+    if (isConnected) {
+      fetchOrders(true);
+    }
+  }, [fetchOrders, isConnected]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isConnected) {
+        fetchOrders(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [fetchOrders, isConnected]);
 
   const handleDeliveryToggle = async (
     orderId: string,
@@ -126,6 +164,10 @@ export function MyOrders() {
 
   // Handle removing an item from order (only undelivered items)
   const handleRemoveItem = async (orderId: string, itemIndex: number, itemId?: string) => {
+    if (isServentView) {
+      return;
+    }
+
     const key = itemId ? `${orderId}-${itemId}` : `${orderId}-${itemIndex}`;
     if (updatingItems.has(key)) return;
 
@@ -187,6 +229,28 @@ export function MyOrders() {
     toast.success('All your items delivered!');
   };
 
+  const handleAutoAssign = async (orderId: string) => {
+    if (isServentView) return;
+    if (assigningOrderId === orderId) return;
+
+    setAssigningOrderId(orderId);
+    try {
+      await ordersApi.assign(orderId, {
+        mode: 'auto',
+        assigneeRole: 'servent',
+      });
+      toast.success('Order assigned to available servent');
+      removeFromMyOrders(orderId);
+      if (currentIndex >= myOrders.length - 1 && currentIndex > 0) {
+        setCurrentIndex(currentIndex - 1);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to assign order');
+    } finally {
+      setAssigningOrderId(null);
+    }
+  };
+
   const nextOrder = () => {
     if (currentIndex < myOrders.length - 1) {
       setCurrentIndex(currentIndex + 1);
@@ -220,7 +284,9 @@ export function MyOrders() {
         <ClipboardCheck className="w-20 h-20 text-gray-300 mb-4" />
         <h2 className="text-xl font-semibold text-gray-800 mb-2">No Active Orders</h2>
         <p className="text-gray-500 text-center">
-          All orders have been completed. Create a new order to get started.
+          {isServentView
+            ? 'No assigned delivery orders right now.'
+            : 'All orders have been completed. Create a new order to get started.'}
         </p>
       </div>
     );
@@ -228,19 +294,21 @@ export function MyOrders() {
 
   const currentOrder = myOrders[currentIndex];
 
-  // Get items added by current server, EXCLUDING pre-delivered items
-  // Pre-delivered = already delivered when page was loaded (not in this session)
+  const isAssignedToCurrentUser =
+    currentOrder.deliveryAssigneeId?.toString() === user?.userId?.toString();
+  const showAllItemsForDelivery = isServentView || isAssignedToCurrentUser;
+
+  // Build visible delivery list, excluding pre-delivered items from initial load.
   const myItems = currentOrder.items
     .map((item, index) => ({ ...item, originalIndex: index }))
     .filter(item => {
       const key = `${currentOrder._id}-${item.originalIndex}`;
-      const isMyItem = item.addedByServerId?.toString() === user?.userId?.toString();
+      const isMyItem =
+        showAllItemsForDelivery ||
+        item.addedByServerId?.toString() === user?.userId?.toString();
       const wasPreDelivered = initialDeliveredItems.has(key);
       const isSessionDelivered = sessionDeliveredItems.has(key);
 
-      // Show if: my item AND (not pre-delivered OR delivered this session)
-      // This means: show undelivered items + items I just delivered
-      // Hide: items that were already delivered when I opened the page
       return isMyItem && (!wasPreDelivered || isSessionDelivered);
     });
 
@@ -311,6 +379,11 @@ export function MyOrders() {
                     <p className="text-sm text-gray-500">
                       {new Date(currentOrder.createdAt).toLocaleTimeString()}
                     </p>
+                    {currentOrder.deliveryAssigneeName && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        Assigned to: <span className="font-medium">{currentOrder.deliveryAssigneeName}</span>
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     <p className="text-sm text-gray-500 mb-1">
@@ -338,6 +411,10 @@ export function MyOrders() {
                       const originalIndex = item.originalIndex;
                       const key = item._id ? `${currentOrder._id}-${item._id}` : `${currentOrder._id}-${originalIndex}`;
                       const isUpdating = updatingItems.has(key);
+                      const canSwipeDelete =
+                        !isServentView &&
+                        !item.isDelivered &&
+                        item.addedByServerId?.toString() === user?.userId?.toString();
 
                       const handleClick = () => {
                         if (!isUpdating && !item.isDelivered) {
@@ -349,8 +426,7 @@ export function MyOrders() {
                       };
 
                       const handleDragEnd = (event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-                        // Only allow swipe removal for undelivered items
-                        if (item.isDelivered) return;
+                        if (!canSwipeDelete) return;
 
                         const swipeThreshold = 100;
                         if (Math.abs(info.offset.x) > swipeThreshold) {
@@ -362,7 +438,7 @@ export function MyOrders() {
                         <motion.div
                           key={item._id || `${item.menuItem}-${originalIndex}`}
                           layout
-                          drag={!item.isDelivered ? "x" : false}
+                          drag={canSwipeDelete ? 'x' : false}
                           dragConstraints={{ left: 0, right: 0 }}
                           dragElastic={0.5}
                           onDragEnd={handleDragEnd}
@@ -434,20 +510,36 @@ export function MyOrders() {
                   <div className="mt-4 p-3 bg-green-50 rounded-lg flex items-start gap-2">
                     <ClipboardCheck className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
                     <p className="text-sm text-green-700">
-                      All your items delivered! Order will auto-complete when all servers finish.
+                      All your items delivered! Order will auto-complete when pending delivery is finished.
                     </p>
                   </div>
                 )}
                 {/* Action buttons */}
                 <div className="mt-4 flex gap-3">
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="h-12 w-12 rounded-full border-orange-300 hover:bg-orange-50 shrink-0"
-                    onClick={() => setAddItemDialogOpen(true)}
-                  >
-                    <Plus className="w-5 h-5 text-orange-600" />
-                  </Button>
+                  {!isServentView && (
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="h-12 w-12 rounded-full border-orange-300 hover:bg-orange-50 shrink-0"
+                      onClick={() => setAddItemDialogOpen(true)}
+                    >
+                      <Plus className="w-5 h-5 text-orange-600" />
+                    </Button>
+                  )}
+                  {!isServentView && (
+                    <Button
+                      variant="outline"
+                      className="h-12 border-blue-300 text-blue-700 hover:bg-blue-50"
+                      onClick={() => handleAutoAssign(currentOrder._id)}
+                      disabled={assigningOrderId === currentOrder._id || myUndeliveredItems.length === 0}
+                    >
+                      {assigningOrderId === currentOrder._id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        'Assign'
+                      )}
+                    </Button>
+                  )}
                   <Button
                     className="flex-1 h-12 bg-green-500 hover:bg-green-600"
                     onClick={() => handleMyItemsDelivered(currentOrder._id)}
@@ -477,14 +569,16 @@ export function MyOrders() {
       </div>
 
       {/* Add Item Dialog */}
-      <AddItemDialog
-        open={addItemDialogOpen}
-        onOpenChange={setAddItemDialogOpen}
-        orderId={currentOrder._id}
-        tableNumber={currentOrder.tableNumber}
-        customerName={currentOrder.customerName}
-        onSuccess={fetchOrders}
-      />
+      {!isServentView && (
+        <AddItemDialog
+          open={addItemDialogOpen}
+          onOpenChange={setAddItemDialogOpen}
+          orderId={currentOrder._id}
+          tableNumber={currentOrder.tableNumber}
+          customerName={currentOrder.customerName}
+          onSuccess={fetchOrders}
+        />
+      )}
     </div>
   );
 }

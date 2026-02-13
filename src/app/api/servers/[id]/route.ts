@@ -17,7 +17,7 @@ interface RouteParams {
   params: Promise<{ id: string }>;
 }
 
-// GET /api/servers/[id] - Get single server (Admin only)
+// GET /api/servers/[id] - Get single staff account (Admin only)
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     await dbConnect();
@@ -28,26 +28,26 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     if (!isAdmin(user)) {
-      return forbiddenResponse('Only admin can view server details');
+      return forbiddenResponse('Only admin can view staff details');
     }
 
     const { id } = await params;
-    const server = await User.findOne({ _id: id, role: 'server' })
+    const server = await User.findOne({ _id: id, role: { $in: ['server', 'servent'] } })
       .select('-password')
       .lean();
 
     if (!server) {
-      return notFoundResponse('Server not found');
+      return notFoundResponse('Staff not found');
     }
 
     return successResponse(server);
   } catch (error) {
-    console.error('Get server error:', error);
-    return serverErrorResponse('Failed to fetch server');
+    console.error('Get staff error:', error);
+    return serverErrorResponse('Failed to fetch staff');
   }
 }
 
-// PATCH /api/servers/[id] - Update server (Admin only)
+// PATCH /api/servers/[id] - Update staff (Admin only)
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     await dbConnect();
@@ -58,13 +58,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     if (!isAdmin(user)) {
-      return forbiddenResponse('Only admin can update servers');
+      return forbiddenResponse('Only admin can update staff');
     }
 
     const { id } = await params;
     const body = await request.json();
 
-    const { username, password, isActive } = body;
+    const { username, password, isActive, role } = body;
 
     // Build update object
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -96,8 +96,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       updateData.isActive = isActive;
     }
 
+    if (role !== undefined) {
+      if (role !== 'server' && role !== 'servent') {
+        return errorResponse('Invalid role');
+      }
+      updateData.role = role;
+    }
+
     const updatedServer = await User.findOneAndUpdate(
-      { _id: id, role: 'server' },
+      { _id: id, role: { $in: ['server', 'servent'] } },
       { $set: updateData },
       { new: true, runValidators: true }
     )
@@ -105,7 +112,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       .lean();
 
     if (!updatedServer) {
-      return notFoundResponse('Server not found');
+      return notFoundResponse('Staff not found');
     }
 
     // Emit real-time event
@@ -115,14 +122,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       emitSocketEvent(SOCKET_EVENTS.SERVER_UPDATED, updatedServer, ROOMS.ADMIN);
     }
 
-    return successResponse(updatedServer, 'Server updated successfully');
+    return successResponse(updatedServer, 'Staff updated successfully');
   } catch (error) {
-    console.error('Update server error:', error);
-    return serverErrorResponse('Failed to update server');
+    console.error('Update staff error:', error);
+    return serverErrorResponse('Failed to update staff');
   }
 }
 
-// DELETE /api/servers/[id] - Delete server (Admin only)
+// DELETE /api/servers/[id] - Delete staff (Admin only)
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     await dbConnect();
@@ -133,25 +140,25 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     if (!isAdmin(user)) {
-      return forbiddenResponse('Only admin can delete servers');
+      return forbiddenResponse('Only admin can delete staff');
     }
 
     const { id } = await params;
     const deletedServer = await User.findOneAndDelete({
       _id: id,
-      role: 'server',
+      role: { $in: ['server', 'servent'] },
     }).lean();
 
     if (!deletedServer) {
-      return notFoundResponse('Server not found');
+      return notFoundResponse('Staff not found');
     }
 
     // Emit real-time event
     emitSocketEvent(SOCKET_EVENTS.SERVER_DELETED, { _id: id }, ROOMS.ADMIN);
 
-    return successResponse(null, 'Server deleted successfully');
+    return successResponse(null, 'Staff deleted successfully');
   } catch (error) {
-    console.error('Delete server error:', error);
-    return serverErrorResponse('Failed to delete server');
+    console.error('Delete staff error:', error);
+    return serverErrorResponse('Failed to delete staff');
   }
 }

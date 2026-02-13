@@ -1,10 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { TableNumberInput, CustomerNameInput, OrderItemsInput } from '@/components/server';
 import { ordersApi } from '@/lib/api-client';
+import { SERVER_QUICK_CATEGORIES } from '@/lib/constants';
 
 interface OrderItem {
   menuItemId: string;
@@ -21,8 +22,26 @@ export default function NewOrderPage() {
   const [tableNumber, setTableNumber] = useState<number | null>(null);
   const [customerName, setCustomerName] = useState<string>('');
   const [groupSize, setGroupSize] = useState<number | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
+  const pendingRequestRef = useRef<{ requestId: string; signature: string } | null>(null);
+
+  const generateRequestId = () => {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    return `order-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  };
+
+  const buildPayloadSignature = (items: OrderItem[]) =>
+    JSON.stringify({
+      tableNumber,
+      customerName: customerName.trim().toLowerCase(),
+      groupSize: groupSize ?? null,
+      items: items
+        .map((item) => ({ menuItemId: item.menuItemId, quantity: item.quantity }))
+        .sort((a, b) => a.menuItemId.localeCompare(b.menuItemId)),
+    });
 
   const handleTableNext = (table: number) => {
     setTableNumber(table);
@@ -45,6 +64,17 @@ export default function NewOrderPage() {
 
   const handleDone = async (items: OrderItem[]) => {
     if (!tableNumber || !customerName) return;
+    if (submitLockRef.current) return;
+
+    submitLockRef.current = true;
+    const signature = buildPayloadSignature(items);
+    if (!pendingRequestRef.current || pendingRequestRef.current.signature !== signature) {
+      pendingRequestRef.current = {
+        requestId: generateRequestId(),
+        signature,
+      };
+    }
+    const clientRequestId = pendingRequestRef.current.requestId;
 
     setIsSubmitting(true);
     try {
@@ -53,12 +83,16 @@ export default function NewOrderPage() {
         customerName,
         ...(groupSize ? { groupSize } : {}),
         items,
+        clientRequestId,
       });
 
+      pendingRequestRef.current = null;
       toast.success('Order created successfully!');
       router.push('/server/my-orders');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to create order');
+    } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -86,6 +120,8 @@ export default function NewOrderPage() {
         customerName={customerName}
         onDone={handleDone}
         onBack={handleBack}
+        isSubmitting={isSubmitting}
+        categoryButtons={SERVER_QUICK_CATEGORIES}
       />
     );
   }

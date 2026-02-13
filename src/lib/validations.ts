@@ -23,7 +23,21 @@ export const registerServerSchema = z.object({
     .string()
     .min(6, 'Password must be at least 6 characters')
     .max(50, 'Password cannot exceed 50 characters'),
+  role: z.enum(['server', 'servent']).optional().default('server'),
 });
+
+export const staffRoleSchema = z.enum(['server', 'servent']);
+
+export const orderAssignmentSchema = z
+  .object({
+    mode: z.enum(['manual', 'auto']).default('auto'),
+    assigneeRole: staffRoleSchema,
+    assigneeId: z.string().min(1, 'Assignee is required').optional(),
+  })
+  .refine((value) => value.mode === 'auto' || Boolean(value.assigneeId), {
+    message: 'Assignee is required for manual assignment',
+    path: ['assigneeId'],
+  });
 
 // Menu item validation schemas
 export const menuItemSchema = z.object({
@@ -94,6 +108,12 @@ export const createOrderSchema = z.object({
   items: z
     .array(orderItemSchema)
     .min(1, 'Order must have at least one item'),
+  clientRequestId: z
+    .string()
+    .min(8, 'Client request ID is invalid')
+    .max(120, 'Client request ID is too long')
+    .optional(),
+  assignment: orderAssignmentSchema.optional(),
 });
 
 export const addItemsToOrderSchema = z.object({
@@ -139,8 +159,10 @@ export const dateRangeSchema = z.object({
 // Type exports
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterServerInput = z.infer<typeof registerServerSchema>;
+export type StaffRoleInput = z.infer<typeof staffRoleSchema>;
 export type MenuItemInput = z.infer<typeof menuItemSchema>;
 export type UpdateMenuItemInput = z.infer<typeof updateMenuItemSchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
+export type OrderAssignmentInput = z.infer<typeof orderAssignmentSchema>;
 export type AddItemsToOrderInput = z.infer<typeof addItemsToOrderSchema>;
 export type OrderItemInput = z.infer<typeof orderItemSchema>;

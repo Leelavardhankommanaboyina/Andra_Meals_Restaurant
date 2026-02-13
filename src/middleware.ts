@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { jwtVerify } from 'jose';
 
-type UserRole = 'admin' | 'server';
+type UserRole = 'admin' | 'server' | 'servent';
 
 function unauthorizedRedirect(request: NextRequest) {
   const response = NextResponse.redirect(new URL('/', request.url));
@@ -37,6 +37,10 @@ export async function middleware(request: NextRequest) {
       return unauthorizedRedirect(request);
     }
 
+    if (pathname.startsWith('/servant') && role !== 'servent') {
+      return unauthorizedRedirect(request);
+    }
+
     return NextResponse.next();
   } catch {
     return unauthorizedRedirect(request);
@@ -44,5 +48,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/server/:path*'],
+  matcher: ['/admin/:path*', '/server/:path*', '/servant/:path*'],
 };

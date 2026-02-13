@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -36,19 +37,43 @@ export default function BillsHistoryPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [startDate, setStartDate] = useState<Date | undefined>(undefined);
   const [endDate, setEndDate] = useState<Date | undefined>(undefined);
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [totalAmount, setTotalAmount] = useState(0);
 
   const fetchBills = useCallback(async () => {
     try {
       setIsLoading(true);
+
       const params: { startDate?: string; endDate?: string } = {};
-      if (startDate) {
-        params.startDate = startDate.toISOString();
-      }
-      if (endDate) {
-        const end = new Date(endDate);
-        end.setHours(23, 59, 59, 999);
-        params.endDate = end.toISOString();
+      if (startDate || endDate) {
+        const buildDateTime = (date: Date, time: string, isEndBoundary: boolean) => {
+          const next = new Date(date);
+          if (time) {
+            const [hours, minutes] = time.split(':').map((value) => parseInt(value, 10));
+            next.setHours(hours || 0, minutes || 0, isEndBoundary ? 59 : 0, isEndBoundary ? 999 : 0);
+          } else if (isEndBoundary) {
+            next.setHours(23, 59, 59, 999);
+          } else {
+            next.setHours(0, 0, 0, 0);
+          }
+          return next;
+        };
+
+        const startBoundary = startDate ? buildDateTime(startDate, startTime, false) : undefined;
+        const endBoundary = endDate ? buildDateTime(endDate, endTime, true) : undefined;
+
+        if (startBoundary && endBoundary && startBoundary.getTime() > endBoundary.getTime()) {
+          toast.error('From date/time cannot be after To date/time');
+          return;
+        }
+
+        if (startBoundary) {
+          params.startDate = startBoundary.toISOString();
+        }
+        if (endBoundary) {
+          params.endDate = endBoundary.toISOString();
+        }
       }
 
       const response = await billsApi.getAll({ ...params, page: 1, limit: 200 });
@@ -60,7 +85,7 @@ export default function BillsHistoryPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [startDate, endDate]);
+  }, [startDate, endDate, startTime, endTime]);
 
   useEffect(() => {
     fetchBills();
@@ -69,6 +94,8 @@ export default function BillsHistoryPage() {
   const clearFilters = () => {
     setStartDate(undefined);
     setEndDate(undefined);
+    setStartTime('');
+    setEndTime('');
   };
 
   // Group bills by date
@@ -121,6 +148,14 @@ export default function BillsHistoryPage() {
                 />
               </PopoverContent>
             </Popover>
+            <Input
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              disabled={!startDate}
+              className="w-[150px]"
+              placeholder="From Time"
+            />
 
             <Popover>
               <PopoverTrigger asChild>
@@ -138,8 +173,16 @@ export default function BillsHistoryPage() {
                 />
               </PopoverContent>
             </Popover>
+            <Input
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+              disabled={!endDate}
+              className="w-[150px]"
+              placeholder="To Time"
+            />
 
-            {(startDate || endDate) && (
+            {(startDate || endDate || startTime || endTime) && (
               <Button variant="ghost" onClick={clearFilters}>
                 Clear Filters
               </Button>
@@ -156,8 +199,8 @@ export default function BillsHistoryPage() {
               <Receipt className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h2 className="text-xl font-semibold text-gray-800 mb-2">No Bills Found</h2>
               <p className="text-gray-500">
-                {startDate || endDate
-                  ? 'No bills found for the selected date range'
+                {startDate || endDate || startTime || endTime
+                  ? 'No bills found for the selected date/time range'
                   : 'Bills will appear here after payments are completed'}
               </p>
             </div>

@@ -26,6 +26,7 @@ import {
 import { ordersApi } from '@/lib/api-client';
 import { toast } from 'sonner';
 import { useAdminStore } from '@/store';
+import { useSocket } from '@/components/providers/socket-provider';
 
 interface OrderItem {
   _id?: string;
@@ -43,7 +44,7 @@ interface Order {
   customerName: string;
   groupSize?: number | null;
   items: OrderItem[];
-  status: 'ongoing' | 'completed' | 'paid';
+  status: 'ongoing' | 'completed' | 'paid' | 'cancelled';
   totalAmount: number;
   serverName: string;
   createdAt: string;
@@ -102,6 +103,7 @@ const OrderCard = memo(function OrderCard({ order, onView }: { order: Order; onV
 
 export default function CustomersPage() {
   // Use Zustand store for orders - socket-provider handles real-time updates
+  const { isConnected } = useSocket();
   const { ongoingOrders, completedOrders, setOngoingOrders, setCompletedOrders, isLoading: storeLoading } = useAdminStore();
   const [isLoading, setIsLoading] = useState(storeLoading || ongoingOrders.length === 0);
   const [tableSearch, setTableSearch] = useState('');
@@ -112,9 +114,9 @@ export default function CustomersPage() {
   const [updatingItems, setUpdatingItems] = useState<Set<number>>(new Set());
   const [changingStatus, setChangingStatus] = useState(false);
 
-  const fetchOrders = useCallback(async () => {
-    // Only fetch if store is empty (first load)
-    if (ongoingOrders.length > 0 || completedOrders.length > 0) {
+  const fetchOrders = useCallback(async (force = false) => {
+    // Avoid redundant calls unless a forced resync is requested.
+    if (!force && (ongoingOrders.length > 0 || completedOrders.length > 0)) {
       setIsLoading(false);
       return;
     }
@@ -127,15 +129,32 @@ export default function CustomersPage() {
       setOngoingOrders(ongoingRes.data.orders as Order[]);
       setCompletedOrders(completedRes.data.orders as Order[]);
     } catch {
-      toast.error('Failed to load orders');;
+      toast.error('Failed to load orders');
     } finally {
       setIsLoading(false);
     }
   }, [ongoingOrders.length, completedOrders.length, setOngoingOrders, setCompletedOrders]);
 
   useEffect(() => {
-    fetchOrders();
+    fetchOrders(false);
   }, [fetchOrders]);
+
+  useEffect(() => {
+    if (isConnected) {
+      fetchOrders(true);
+    }
+  }, [fetchOrders, isConnected]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isConnected) {
+        fetchOrders(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [fetchOrders, isConnected]);
 
   // Sync selectedOrder with store updates (from socket events)
   useEffect(() => {

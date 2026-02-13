@@ -38,7 +38,7 @@ export const authApi = {
     apiClient<{
       success: boolean;
       data: {
-        user: { id: string; username: string; role: 'admin' | 'server' };
+        user: { id: string; username: string; role: 'admin' | 'server' | 'servent' };
       };
     }>('/api/auth/login', {
       method: 'POST',
@@ -53,7 +53,7 @@ export const authApi = {
   me: () =>
     apiClient<{
       success: boolean;
-      data: { user: { id: string; username: string; role: 'admin' | 'server' } };
+      data: { user: { id: string; username: string; role: 'admin' | 'server' | 'servent' } };
     }>('/api/auth/me'),
 };
 
@@ -101,6 +101,7 @@ export const serversApi = {
         servers: Array<{
           _id: string;
           username: string;
+          role: 'server' | 'servent';
           isActive: boolean;
           createdAt: string;
           updatedAt: string;
@@ -109,10 +110,13 @@ export const serversApi = {
       };
     }>('/api/servers'),
 
-  create: (data: { username: string; password: string }) =>
+  create: (data: { username: string; password: string; role?: 'server' | 'servent' }) =>
     apiClient('/api/servers', { method: 'POST', body: data }),
 
-  update: (id: string, data: Partial<{ username: string; password: string; isActive: boolean }>) =>
+  update: (
+    id: string,
+    data: Partial<{ username: string; password: string; isActive: boolean; role: 'server' | 'servent' }>
+  ) =>
     apiClient(`/api/servers/${id}`, { method: 'PATCH', body: data }),
 
   delete: (id: string) => apiClient(`/api/servers/${id}`, { method: 'DELETE' }),
@@ -154,9 +158,15 @@ export const ordersApi = {
             addedByServerId?: string;
             addedByServerName?: string;
           }>;
-          status: 'ongoing' | 'completed' | 'paid';
+          status: 'ongoing' | 'completed' | 'paid' | 'cancelled';
           serverId: string;
           serverName: string;
+          deliveryAssigneeId?: string;
+          deliveryAssigneeName?: string;
+          deliveryAssigneeRole?: 'server' | 'servent';
+          assignedById?: string;
+          assignedByName?: string;
+          assignedAt?: string;
           totalAmount: number;
           createdAt: string;
           updatedAt: string;
@@ -191,7 +201,7 @@ export const ordersApi = {
           addedByServerId?: string;
           addedByServerName?: string;
         }>;
-        status: 'ongoing' | 'completed' | 'paid';
+        status: 'ongoing' | 'completed' | 'paid' | 'cancelled';
         totalAmount: number;
         createdAt: string;
       };
@@ -219,17 +229,37 @@ export const ordersApi = {
     customerName: string;
     groupSize?: number;
     items: Array<{ menuItemId: string; name: string; price: number; quantity: number }>;
+    clientRequestId?: string;
+    assignment?: {
+      mode: 'manual' | 'auto';
+      assigneeRole: 'server' | 'servent';
+      assigneeId?: string;
+    };
   }) => apiClient('/api/orders', { method: 'POST', body: data }),
 
   update: (
     id: string,
     data: {
-      status?: 'ongoing' | 'completed' | 'paid';
+      status?: 'ongoing' | 'completed' | 'paid' | 'cancelled';
       items?: Array<{ menuItemId: string; name: string; price: number; quantity: number }>;
       itemDeliveryUpdate?: { itemId?: string; itemIndex?: number; isDelivered: boolean };
       removeItem?: { itemId?: string; itemIndex?: number };
+      assign?: {
+        mode: 'manual' | 'auto';
+        assigneeRole: 'server' | 'servent';
+        assigneeId?: string;
+      };
     }
   ) => apiClient(`/api/orders/${id}`, { method: 'PATCH', body: data }),
+
+  assign: (
+    id: string,
+    data: {
+      mode: 'manual' | 'auto';
+      assigneeRole: 'server' | 'servent';
+      assigneeId?: string;
+    }
+  ) => apiClient(`/api/orders/${id}`, { method: 'PATCH', body: { assign: data } }),
 
   delete: (id: string) => apiClient(`/api/orders/${id}`, { method: 'DELETE' }),
 };

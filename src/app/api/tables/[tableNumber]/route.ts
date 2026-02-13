@@ -85,8 +85,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const occupiedSeats = await getOccupiedSeats(tableNumber);
     const newTotalSeats = chairsTop + chairsBottom;
+    const currentTotalSeats = table.chairsTop + table.chairsBottom;
+    const isNoOpUpdate =
+      table.chairsTop === chairsTop && table.chairsBottom === chairsBottom;
 
-    if (newTotalSeats < occupiedSeats) {
+    if (!isNoOpUpdate && newTotalSeats < occupiedSeats) {
       return errorResponse(
         `Cannot set ${newTotalSeats} seats while ${occupiedSeats} seats are occupied`
       );
@@ -104,7 +107,9 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         chairsBottom: table.chairsBottom,
         totalSeats: newTotalSeats,
         occupiedSeats,
-        availableSeats: newTotalSeats - occupiedSeats,
+        availableSeats: Math.max(newTotalSeats - occupiedSeats, 0),
+        overflowSeats: Math.max(occupiedSeats - newTotalSeats, 0),
+        previousTotalSeats: currentTotalSeats,
       },
       'Table chair mapping updated successfully'
     );

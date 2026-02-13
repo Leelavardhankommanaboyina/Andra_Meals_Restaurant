@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -9,6 +9,7 @@ import {
   OrderItemsInput
 } from '@/components/server';
 import { ordersApi } from '@/lib/api-client';
+import { SERVER_QUICK_CATEGORIES } from '@/lib/constants';
 
 interface OrderItem {
   menuItemId: string;
@@ -25,8 +26,8 @@ export default function OldOrderPage() {
   const [tableNumber, setTableNumber] = useState<number | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState<string>('');
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
 
   const handleTableNext = (table: number) => {
     setTableNumber(table);
@@ -49,7 +50,9 @@ export default function OldOrderPage() {
 
   const handleDone = async (items: OrderItem[]) => {
     if (!selectedOrderId) return;
+    if (submitLockRef.current) return;
 
+    submitLockRef.current = true;
     setIsSubmitting(true);
     try {
       await ordersApi.update(selectedOrderId, { items });
@@ -59,6 +62,8 @@ export default function OldOrderPage() {
       router.push('/server/my-orders');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to add items');
+    } finally {
+      submitLockRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -84,6 +89,8 @@ export default function OldOrderPage() {
         customerName={customerName}
         onDone={handleDone}
         onBack={handleBack}
+        isSubmitting={isSubmitting}
+        categoryButtons={SERVER_QUICK_CATEGORIES}
       />
     );
   }

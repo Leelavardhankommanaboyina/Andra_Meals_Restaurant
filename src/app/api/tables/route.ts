@@ -84,12 +84,10 @@ export async function GET(request: NextRequest) {
     const user = await getCurrentUser(request);
     if (!user) return unauthorizedResponse();
 
-    const tables = await Table.find()
-      .sort({ tableNumber: 1 })
-      .select('_id tableNumber chairsTop chairsBottom')
-      .lean();
-
-    const occupancyMap = await getOccupancyMap();
+    const [tables, occupancyMap] = await Promise.all([
+      Table.find().sort({ tableNumber: 1 }).select('_id tableNumber chairsTop chairsBottom').lean(),
+      getOccupancyMap(),
+    ]);
     const tablesWithOccupancy = withOccupancy(tables, occupancyMap);
 
     const totalSeats = tablesWithOccupancy.reduce((sum, table) => sum + table.totalSeats, 0);
@@ -191,12 +189,10 @@ export async function PUT(request: NextRequest) {
 
     await Table.deleteMany({ tableNumber: { $gt: totalTables } });
 
-    const updatedTables = await Table.find()
-      .sort({ tableNumber: 1 })
-      .select('_id tableNumber chairsTop chairsBottom')
-      .lean();
-
-    const occupancyMap = await getOccupancyMap();
+    const [updatedTables, occupancyMap] = await Promise.all([
+      Table.find().sort({ tableNumber: 1 }).select('_id tableNumber chairsTop chairsBottom').lean(),
+      getOccupancyMap(),
+    ]);
     const tablesWithOccupancy = withOccupancy(updatedTables, occupancyMap);
 
     const totalSeats = tablesWithOccupancy.reduce((sum, table) => sum + table.totalSeats, 0);
